@@ -62,7 +62,6 @@ Table parsed_records {
   ingest_record_id bigint [not null, unique]
   source_id bigint [not null]
   external_id varchar
-  aliases jsonb [null]
   cvss_score "decimal(3,1)" [null]
   cvss_vector varchar [null]
   cvss_version varchar [null]
@@ -82,6 +81,19 @@ Table parsed_records {
   indexes {
     (source_id, external_id)
     resolved_at
+  }
+}
+
+Table aliases {
+  id bigint [pk, increment]
+  parsed_record_id bigint [not null]
+  alias varchar
+  created_at timestamp [null]
+  updated_at timestamp [null]
+
+  indexes {
+    (parsed_record_id, alias) [unique]
+    alias
   }
 }
 
@@ -124,6 +136,7 @@ Ref: parsed_records.source_id > sources.id [delete: cascade]
 
 Ref: sources.id - sync_states.source_id [delete: cascade]
 Ref: ingest_records.id - parsed_records.ingest_record_id [delete: cascade]
+Ref: aliases.parsed_record_id > parsed_records.id [delete: cascade]
 Ref: version_ranges.parsed_record_id > parsed_records.id [delete: cascade]
 Ref: version_ranges.format_id > formats.id
 

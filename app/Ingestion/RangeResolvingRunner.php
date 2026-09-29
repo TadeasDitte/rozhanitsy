@@ -32,7 +32,7 @@ final class RangeResolvingRunner
             });
     }
 
-    private function processOne(ParsedRecord $record): void
+    public function processOne(ParsedRecord $record): void
     {
         try {
             /** @var array<int, array<string, mixed>> $rawRanges */

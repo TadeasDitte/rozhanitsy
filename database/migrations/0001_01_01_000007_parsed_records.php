@@ -13,7 +13,6 @@ return new class extends Migration
             $table->foreignId('ingest_record_id')->constrained()->cascadeOnDelete();
             $table->foreignId('source_id')->constrained('sources')->cascadeOnDelete();
             $table->string('external_id');
-            $table->jsonb('aliases')->nullable();
             $table->decimal('cvss_score', 3, 1)->nullable();
             $table->string('cvss_vector')->nullable();
             $table->string('cvss_version')->nullable();

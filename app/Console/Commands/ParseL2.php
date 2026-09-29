@@ -2,9 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Ingestion\Parsers\RangeParser;
+use App\Ingestion\ParserResolver;
 use App\Ingestion\RangeResolvingRunner;
-use App\Models\Format;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use Illuminate\Console\Attributes\Description;
@@ -15,14 +14,14 @@ use Illuminate\Console\Command;
 #[Description('Run Layer 2 resolution: expand parsed_records.raw_ranges into version_ranges')]
 final class ParseL2 extends Command
 {
-    public function handle(): int
+    public function handle(ParserResolver $resolver): int
     {
         $sources = $this->argument('source')
             ? Source::where('slug', $this->argument('source'))->get()
             : Source::all();
 
         foreach ($sources as $source) {
-            $parser = $this->resolveParser($source->slug);
+            $parser = $resolver->rangeParser($source->slug);
 
             if ($parser === null) {
                 $this->warn("No range parser class found for slug [{$source->slug}], skipping");
@@ -30,7 +29,7 @@ final class ParseL2 extends Command
                 continue;
             }
 
-            $formatId = $this->resolveFormatId($source->slug);
+            $formatId = $resolver->formatId($source->slug);
 
             if ($formatId === null) {
                 $this->warn("No format row for slug [{$source->slug}], run FormatSeeder. Skipping");
@@ -69,36 +68,5 @@ final class ParseL2 extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function resolveParser(?string $slug): ?RangeParser
-    {
-        if ($slug === null) {
-            return null;
-        }
-
-        $class = 'App\\Ingestion\\Parsers\\'.strtoupper($slug).'RangeParser';
-
-        if (! class_exists($class)) {
-            return null;
-        }
-
-        return app($class);
-    }
-
-    private function resolveFormatId(string $slug): ?int
-    {
-        // why doesnt this use db?
-        $name = match ($slug) {
-            'nvd' => 'cpe',
-            'osv' => 'purl',
-            default => null,
-        };
-
-        if ($name === null) {
-            return null;
-        }
-
-        return Format::where('name', $name)->value('id');
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Alias;
 use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
@@ -95,4 +96,33 @@ test('--rerun only requeues records for the named source', function () {
     expect($nvdIngest->refresh()->processing_status)->toBe('processed');
     expect(ParsedRecord::where('ingest_record_id', $osvIngest->id)->count())->toBe(1);
     expect(ParsedRecord::where('ingest_record_id', $nvdIngest->id)->count())->toBe(0);
+});
+
+test('writes aliases to their own table, deduplicated', function () {
+    $source = Source::factory()->create(['slug' => 'osv']);
+    $ingest = IngestRecord::factory()->create([
+        'source_id' => $source->id,
+        'processing_status' => 'pending',
+        'raw_payload' => ['id' => 'GHSA-with-alias', 'aliases' => ['CVE-2026-1', 'CVE-2026-2', 'CVE-2026-1']],
+    ]);
+
+    $this->artisan('parse:l1', ['source' => 'osv'])->assertSuccessful();
+
+    $parsed = ParsedRecord::where('ingest_record_id', $ingest->id)->sole();
+    expect($parsed->aliases()->pluck('alias')->sort()->values()->all())->toBe(['CVE-2026-1', 'CVE-2026-2']);
+});
+
+test('--rerun replaces stale aliases', function () {
+    $source = Source::factory()->create(['slug' => 'osv']);
+    $ingest = IngestRecord::factory()->create([
+        'source_id' => $source->id,
+        'processing_status' => 'processed',
+        'raw_payload' => ['id' => 'GHSA-with-alias', 'aliases' => ['CVE-2026-1']],
+    ]);
+    $parsed = ParsedRecord::factory()->create(['ingest_record_id' => $ingest->id, 'source_id' => $source->id]);
+    Alias::factory()->for($parsed)->create(['alias' => 'CVE-1999-stale']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--rerun' => true])->assertSuccessful();
+
+    expect($parsed->aliases()->pluck('alias')->all())->toBe(['CVE-2026-1']);
 });

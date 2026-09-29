@@ -18,7 +18,6 @@ final class ParsedRecord extends Model
     protected function casts(): array
     {
         return [
-            'aliases' => 'array',
             'weaknesses' => 'array',
             'references' => 'array',
             'raw_ranges' => 'array',
@@ -38,6 +37,14 @@ final class ParsedRecord extends Model
     public function source(): BelongsTo
     {
         return $this->belongsTo(Source::class);
+    }
+
+    /**
+     * @return HasMany<Alias, $this>
+     */
+    public function aliases(): HasMany
+    {
+        return $this->hasMany(Alias::class);
     }
 
     /**

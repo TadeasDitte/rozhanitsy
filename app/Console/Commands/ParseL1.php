@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Ingestion\Parsers\SourceRecordParser;
+use App\Ingestion\ParserResolver;
 use App\Ingestion\RecordParsingRunner;
 use App\Models\IngestRecord;
 use App\Models\Source;
@@ -14,14 +14,14 @@ use Illuminate\Console\Command;
 #[Description('Run Layer 1 parsing against pending ingest_records')]
 final class ParseL1 extends Command
 {
-    public function handle(): int
+    public function handle(ParserResolver $resolver): int
     {
         $sources = $this->argument('source')
             ? Source::where('slug', $this->argument('source'))->get()
             : Source::all();
 
         foreach ($sources as $source) {
-            $parser = $this->resolveParser($source->slug);
+            $parser = $resolver->recordParser($source->slug);
 
             if ($parser === null) {
                 $this->warn("No parser class found for slug [{$source->slug}], skipping");
@@ -30,9 +30,7 @@ final class ParseL1 extends Command
             }
 
             if ($this->option('retry-failed')) {
-                $requeued = IngestRecord::where('source_id', $source->id)
-                    ->where('processing_status', 'failed')
-                    ->update(['processing_status' => 'pending', 'processing_error' => null]);
+                $requeued = RecordParsingRunner::requeueFailed($source);
 
                 if ($requeued > 0) {
                     $this->info("Requeued {$requeued} failed records for {$source->slug}");
@@ -40,9 +38,7 @@ final class ParseL1 extends Command
             }
 
             if ($this->option('rerun')) {
-                $requeued = IngestRecord::where('source_id', $source->id)
-                    ->whereIn('processing_status', ['processed', 'skipped'])
-                    ->update(['processing_status' => 'pending', 'processed_at' => null, 'processing_error' => null]);
+                $requeued = RecordParsingRunner::requeueProcessed($source);
 
                 if ($requeued > 0) {
                     $this->info("Requeued {$requeued} already-processed records for {$source->slug}");
@@ -70,20 +66,5 @@ final class ParseL1 extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    private function resolveParser(?string $slug): ?SourceRecordParser
-    {
-        if ($slug === null) {
-            return null;
-        }
-
-        $class = 'App\\Ingestion\\Parsers\\'.strtoupper($slug).'RecordParser';
-
-        if (! class_exists($class)) {
-            return null;
-        }
-
-        return app($class);
     }
 }

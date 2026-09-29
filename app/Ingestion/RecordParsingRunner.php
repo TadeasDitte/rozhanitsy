@@ -29,7 +29,21 @@ final class RecordParsingRunner
             });
     }
 
-    private function processOne(IngestRecord $ingestRecord): void
+    public static function requeueFailed(Source $source): int
+    {
+        return IngestRecord::where('source_id', $source->id)
+            ->where('processing_status', 'failed')
+            ->update(['processing_status' => 'pending', 'processing_error' => null]);
+    }
+
+    public static function requeueProcessed(Source $source): int
+    {
+        return IngestRecord::where('source_id', $source->id)
+            ->whereIn('processing_status', ['processed', 'skipped'])
+            ->update(['processing_status' => 'pending', 'processed_at' => null, 'processing_error' => null]);
+    }
+
+    public function processOne(IngestRecord $ingestRecord): ?ParsedRecord
     {
         try {
             $parsed = $this->parser->parseOne($ingestRecord->raw_payload);
@@ -37,16 +51,15 @@ final class RecordParsingRunner
             if ($parsed === null) {
                 $ingestRecord->update(['processing_status' => 'skipped', 'processed_at' => now()]);
 
-                return;
+                return null;
             }
 
-            DB::transaction(function () use ($ingestRecord, $parsed) {
-                ParsedRecord::updateOrCreate(
+            return DB::transaction(function () use ($ingestRecord, $parsed) {
+                $parsedRecord = ParsedRecord::updateOrCreate(
                     ['ingest_record_id' => $ingestRecord->id],
                     [
                         'source_id' => $ingestRecord->source_id,
                         'external_id' => $parsed->externalId,
-                        'aliases' => $parsed->aliases,
                         'cvss_score' => $parsed->cvssScore,
                         'cvss_vector' => $parsed->cvssVector,
                         'cvss_version' => $parsed->cvssVersion,
@@ -63,7 +76,14 @@ final class RecordParsingRunner
                     ]
                 );
 
+                $parsedRecord->aliases()->delete();
+                $parsedRecord->aliases()->createMany(
+                    array_map(fn (string $alias) => ['alias' => $alias], array_values(array_unique($parsed->aliases)))
+                );
+
                 $ingestRecord->update(['processing_status' => 'processed', 'processed_at' => now()]);
+
+                return $parsedRecord;
             });
         } catch (Throwable $e) {
             $ingestRecord->update([
@@ -71,6 +91,8 @@ final class RecordParsingRunner
                 'processing_error' => $e->getMessage(),
                 'processed_at' => now(),
             ]);
+
+            return null;
         }
     }
 }
