@@ -26,6 +26,7 @@ checks modified_id.csv and downloads and updates only the modified entries since
 It passes raw data from sources through source specific parsers into a parsed_records table
 
 `--retry-failed` flag does what it says it does
+
 `php artisan parse:fast` runs every layer per record instead of per layer: each pending ingest record goes through L1 (parsed_records + aliases) and straight into L2 (version_ranges) before the next one is picked up.
 Afterwards it also resolves any parsed_records still left unresolved from earlier L1-only runs.
 Takes the same `--retry-failed` and `--rerun` flags as `parse:l1`
