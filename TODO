@@ -1,0 +1,7 @@
+1. parse aliases into a separate table instead of parsed records
+2. dockerise for prod
+3. add valkey into project
+4. make version comparator
+5. make API
+6. test
+7. merge into rozhanitsy

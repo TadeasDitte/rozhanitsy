@@ -5,7 +5,6 @@ Enum ingest_records_processing_status {
   skipped
 }
 
-// CPE "part": application / hardware / operating system / unknown
 Enum version_ranges_type {
   a
   h
@@ -50,7 +49,6 @@ Table sync_states {
   updated_at timestamp [null]
 }
 
-// The range format a version_ranges row was derived from: 'cpe' (NVD) or 'purl' (OSV).
 Table formats {
   id int [pk, increment]
   name varchar [unique, not null]
@@ -87,16 +85,13 @@ Table parsed_records {
   }
 }
 
-// L2 (parse:l2) output. Explodes parsed_records.raw_ranges (NVD cve.configurations /
-// OSV affected[]) into one normalized, queryable row per affected version range.
-// One parsed_record fans out to many rows (many CPE matches / OSV events), and may
-// later carry more than one format. L2 writes only resolved_at back to parsed_records.
 Table version_ranges {
   id bigint [pk, increment]
   parsed_record_id bigint [not null]
   format_id bigint [not null]
   type version_ranges_type [not null, default: 'u']
   ecosystem varchar [null]
+  package_manager varchar
   vendor varchar [null]
   product varchar [null]
   version_incl_start varchar [null, note: 'affected from, inclusive']
@@ -115,8 +110,6 @@ Table version_ranges {
   }
 }
 
-// Planned: TRF string serialization layer (see wiki/trf.md). Not built yet;
-// version_ranges is the normalized storage it would be rendered from.
 Table trf {
   id bigint [pk, increment]
   format_version varchar [default: 'v1']
@@ -135,7 +128,6 @@ Ref: version_ranges.parsed_record_id > parsed_records.id [delete: cascade]
 Ref: version_ranges.format_id > formats.id
 
 
-// Laravel default
 Table users {
   id bigint [pk, increment]
   name varchar
