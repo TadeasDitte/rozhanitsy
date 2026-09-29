@@ -1,0 +1,62 @@
+x-app: &app
+    build:
+        context: .
+        target: app
+    image: 'rozhanitsy:latest'
+    env_file: .env.production
+    restart: unless-stopped
+    volumes:
+        - 'app-storage:/app/storage/app'
+    depends_on:
+        pgsql:
+            condition: service_healthy
+
+services:
+    migrate:
+        <<: *app
+        restart: 'no'
+        command: ['php', 'artisan', 'migrate', '--force', '--no-interaction']
+
+    app:
+        <<: *app
+        ports:
+            - '${APP_PORT:-80}:80'
+            - '${APP_HTTPS_PORT:-443}:443'
+            - '${APP_HTTPS_PORT:-443}:443/udp'
+        volumes:
+            - 'app-storage:/app/storage/app'
+            - 'caddy-data:/data/caddy'
+            - 'caddy-config:/config/caddy'
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+
+    scheduler:
+        <<: *app
+        command: ['php', 'artisan', 'schedule:work']
+        healthcheck:
+            disable: true
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+
+    pgsql:
+        image: 'postgres:18-alpine'
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: '${DB_DATABASE}'
+            POSTGRES_USER: '${DB_USERNAME}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:?DB_PASSWORD must be set}'
+        volumes:
+            - 'pgsql-data:/var/lib/postgresql'
+        healthcheck:
+            test: ['CMD', 'pg_isready', '-q', '-d', '${DB_DATABASE}', '-U', '${DB_USERNAME}']
+            interval: 5s
+            retries: 10
+            timeout: 5s
+
+volumes:
+    app-storage:
+    caddy-data:
+    caddy-config:
+    pgsql-data:
