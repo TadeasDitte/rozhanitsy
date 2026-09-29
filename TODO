@@ -4,4 +4,5 @@
 4. make version comparator
 5. make API
 6. test
-7. merge into rozhanitsy
+7. remove some raw data from db
+8. merge into rozhanitsy
