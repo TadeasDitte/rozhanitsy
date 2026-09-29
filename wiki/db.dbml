@@ -12,6 +12,12 @@ Enum version_ranges_type {
   u
 }
 
+Enum version_ranges_version_scope {
+  range
+  any
+  na
+}
+
 Table sources {
   id bigint [pk, increment]
   name varchar
@@ -110,6 +116,7 @@ Table version_ranges {
   version_excl_start varchar [null, note: 'affected from, exclusive']
   version_incl_end varchar [null, note: 'affected up to, inclusive (OSV last_affected)']
   version_excl_end varchar [null, note: 'fixed in / affected below, exclusive (OSV fixed, NVD versionEndExcluding)']
+  version_scope version_ranges_version_scope [not null, default: 'range', note: 'range: bounds are authoritative; any: CPE * without bounds (low confidence); na: CPE - (no version, never matches)']
   plugs_into varchar [null, note: 'host product for plugin-type CVEs, e.g. wordpress']
   raw text [null, note: 'original CPE 2.3 criteria string or PURL, kept for traceability']
   created_at timestamp [null]

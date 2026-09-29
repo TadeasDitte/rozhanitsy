@@ -55,6 +55,7 @@ final class RangeResolvingRunner
                         'version_excl_start' => $range->versionExclStart,
                         'version_incl_end' => $range->versionInclEnd,
                         'version_excl_end' => $range->versionExclEnd,
+                        'version_scope' => $range->versionScope,
                         'plugs_into' => $range->plugsInto,
                         'raw' => $range->raw,
                         'created_at' => now(),

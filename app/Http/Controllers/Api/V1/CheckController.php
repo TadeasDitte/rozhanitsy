@@ -13,9 +13,6 @@ class CheckController extends Controller
 {
     public function __construct(private readonly VulnerabilityMatcher $matcher) {}
 
-    /**
-     * Check whether a single product version is affected by any known vulnerability.
-     */
     public function check(CheckRequest $request): JsonResponse
     {
         return response()->json([
@@ -24,13 +21,11 @@ class CheckController extends Controller
                 $request->string('version'),
                 $request->validated('vendor'),
                 $request->validated('ecosystem'),
+                $request->boolean('include_low_confidence'),
             ),
         ]);
     }
 
-    /**
-     * Check up to 100 product versions in one request.
-     */
     public function batch(BatchCheckRequest $request): JsonResponse
     {
         /** @var list<array{product: string, version: string, vendor?: ?string, ecosystem?: ?string}> $packages */
@@ -42,6 +37,7 @@ class CheckController extends Controller
                 $package['version'],
                 $package['vendor'] ?? null,
                 $package['ecosystem'] ?? null,
+                $request->boolean('include_low_confidence'),
             ), $packages),
         ]);
     }
@@ -49,9 +45,9 @@ class CheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem): array
+    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, bool $includeLowConfidence): array
     {
-        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem);
+        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $includeLowConfidence);
 
         return [
             'vendor' => $vendor,

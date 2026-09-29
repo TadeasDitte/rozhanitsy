@@ -29,6 +29,7 @@ class VersionRangeFactory extends Factory
             'version_excl_start' => null,
             'version_incl_end' => null,
             'version_excl_end' => '2.0.0',
+            'version_scope' => 'range',
             'plugs_into' => null,
             'raw' => null,
         ];

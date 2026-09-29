@@ -24,6 +24,7 @@ return new class extends Migration
             $table->string('version_excl_start')->nullable();
             $table->string('version_incl_end')->nullable();
             $table->string('version_excl_end')->nullable();
+            $table->enum('version_scope', ['range', 'any', 'na'])->default('range');
             $table->string('plugs_into')->nullable();
             $table->text('raw')->nullable();
             $table->timestamps();

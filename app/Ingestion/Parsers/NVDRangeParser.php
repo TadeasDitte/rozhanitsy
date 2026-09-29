@@ -5,13 +5,6 @@ namespace App\Ingestion\Parsers;
 use App\Ingestion\Support\Cpe23;
 use App\Ingestion\VersionRangeData;
 
-/**
- * Expands NVD `cve.configurations` (CPE match nodes) into version ranges.
- *
- * v1 flattens `configurations[].nodes[].cpeMatch[]` and ignores node-level
- * `operator` (AND/OR) and `negate` beyond deriving `plugs_into` from an AND
- * node's non-vulnerable sibling.
- */
 final class NVDRangeParser implements RangeParser
 {
     public function parse(array $rawRanges): array
@@ -19,14 +12,18 @@ final class NVDRangeParser implements RangeParser
         $ranges = [];
 
         foreach ($rawRanges as $configuration) {
-            foreach ($configuration['nodes'] ?? [] as $node) {
-                $plugsInto = $this->resolvePlugsInto($node);
+            $nodes = $configuration['nodes'] ?? [];
+            $platformNodes = $this->platformNodes($configuration);
+            $configurationPlugsInto = $this->firstProduct($platformNodes);
 
-                foreach ($node['cpeMatch'] ?? [] as $match) {
-                    if (($match['vulnerable'] ?? false) !== true) {
-                        continue;
-                    }
+            foreach ($nodes as $index => $node) {
+                if (array_key_exists($index, $platformNodes)) {
+                    continue;
+                }
 
+                $plugsInto = $this->resolvePlugsInto($node) ?? $configurationPlugsInto;
+
+                foreach ($this->vulnerableMatches($node) as $match) {
                     $range = $this->buildRange($match, $plugsInto);
 
                     if ($range !== null) {
@@ -58,10 +55,15 @@ final class NVDRangeParser implements RangeParser
         $endExcl = $this->bound($match['versionEndExcluding'] ?? null);
 
         $hasBound = $startIncl !== null || $startExcl !== null || $endIncl !== null || $endExcl !== null;
+        $versionScope = 'range';
 
-        if (! $hasBound && $this->isConcrete($cpe->version)) {
-            $startIncl = $cpe->version;
-            $endIncl = $cpe->version;
+        if (! $hasBound) {
+            if ($this->isConcrete($cpe->version)) {
+                $startIncl = $cpe->version;
+                $endIncl = $cpe->version;
+            } else {
+                $versionScope = $cpe->version === '-' ? 'na' : 'any';
+            }
         }
 
         return new VersionRangeData(
@@ -76,7 +78,77 @@ final class NVDRangeParser implements RangeParser
             versionExclEnd: $endExcl,
             plugsInto: $plugsInto ?? $this->attribute($cpe->targetSw),
             raw: $criteria,
+            versionScope: $versionScope,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $configuration
+     * @return array<int, array<string, mixed>>
+     */
+    private function platformNodes(array $configuration): array
+    {
+        $nodes = $configuration['nodes'] ?? [];
+
+        if (($configuration['operator'] ?? null) !== 'AND' || count($nodes) < 2) {
+            return [];
+        }
+
+        $versionedNodes = array_filter($nodes, fn (array $node): bool => $this->hasVersionedMatch($node));
+
+        return array_filter($nodes, fn (array $node): bool => $this->vulnerableMatches($node) === []
+            || ($versionedNodes !== [] && ! $this->hasVersionedMatch($node)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    private function hasVersionedMatch(array $node): bool
+    {
+        foreach ($this->vulnerableMatches($node) as $match) {
+            foreach (['versionStartIncluding', 'versionStartExcluding', 'versionEndIncluding', 'versionEndExcluding'] as $key) {
+                if ($this->bound($match[$key] ?? null) !== null) {
+                    return true;
+                }
+            }
+
+            if (is_string($match['criteria'] ?? null) && $this->isConcrete(Cpe23::parse($match['criteria'])->version)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return list<array<string, mixed>>
+     */
+    private function vulnerableMatches(array $node): array
+    {
+        return array_values(array_filter(
+            $node['cpeMatch'] ?? [],
+            fn (array $match): bool => ($match['vulnerable'] ?? false) === true,
+        ));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $nodes
+     */
+    private function firstProduct(array $nodes): ?string
+    {
+        foreach ($nodes as $node) {
+            foreach ($node['cpeMatch'] ?? [] as $match) {
+                $criteria = $match['criteria'] ?? null;
+                $product = is_string($criteria) ? $this->attribute(Cpe23::parse($criteria)->product) : null;
+
+                if ($product !== null) {
+                    return $product;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -88,25 +160,9 @@ final class NVDRangeParser implements RangeParser
             return null;
         }
 
-        foreach ($node['cpeMatch'] ?? [] as $match) {
-            if (($match['vulnerable'] ?? false) === true) {
-                continue;
-            }
+        $nonVulnerable = array_filter($node['cpeMatch'] ?? [], fn (array $match): bool => ($match['vulnerable'] ?? false) !== true);
 
-            $criteria = $match['criteria'] ?? null;
-
-            if (! is_string($criteria)) {
-                continue;
-            }
-
-            $product = $this->attribute(Cpe23::parse($criteria)->product);
-
-            if ($product !== null) {
-                return $product;
-            }
-        }
-
-        return null;
+        return $this->firstProduct([['cpeMatch' => $nonVulnerable]]);
     }
 
     /**

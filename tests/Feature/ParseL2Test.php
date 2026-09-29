@@ -216,3 +216,19 @@ test('marks a record with no expandable ranges as resolved with zero rows', func
     expect($record->refresh()->resolved_at)->not->toBeNull();
     expect($record->versionRanges)->toHaveCount(0);
 });
+
+test('stores the version scope of each range', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [[
+        'nodes' => [['operator' => 'OR', 'cpeMatch' => [
+            ['criteria' => 'cpe:2.3:h:acme:router:-:*:*:*:*:*:*:*', 'vulnerable' => true],
+            ['criteria' => 'cpe:2.3:a:acme:app:*:*:*:*:*:*:*:*', 'vulnerable' => true],
+        ]]],
+    ]]]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    expect($record->versionRanges()->pluck('version_scope', 'product')->all())
+        ->toBe(['router' => 'na', 'app' => 'any']);
+});

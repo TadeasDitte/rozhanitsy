@@ -28,6 +28,7 @@ class VersionRangeResource extends JsonResource
             'version_excl_start' => $this->version_excl_start,
             'version_incl_end' => $this->version_incl_end,
             'version_excl_end' => $this->version_excl_end,
+            'version_scope' => $this->version_scope,
             'plugs_into' => $this->plugs_into,
         ];
     }

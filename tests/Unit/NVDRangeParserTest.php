@@ -158,3 +158,93 @@ test('throws on an unparseable cpe criteria string so the runner records it', fu
         ['criteria' => 'not-a-cpe-string', 'vulnerable' => true],
     ]));
 })->throws(InvalidArgumentException::class);
+
+test('marks a range as any when the cpe version is a wildcard without qualifiers', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdConfig([
+        ['criteria' => 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*', 'vulnerable' => true],
+    ]));
+
+    expect($ranges[0]->versionScope)->toBe('any');
+});
+
+test('marks a range as na when the cpe version is not applicable', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdConfig([
+        ['criteria' => 'cpe:2.3:a:vendor:product:-:*:*:*:*:*:*:*', 'vulnerable' => true],
+    ]));
+
+    expect($ranges[0]->versionScope)->toBe('na')
+        ->and($ranges[0]->versionInclStart)->toBeNull()
+        ->and($ranges[0]->versionInclEnd)->toBeNull();
+});
+
+test('marks bounded and exact ranges as range', function (array $match) {
+    $ranges = (new NVDRangeParser)->parse(nvdConfig([['vulnerable' => true, ...$match]]));
+
+    expect($ranges[0]->versionScope)->toBe('range');
+})->with([
+    'exact version' => [['criteria' => 'cpe:2.3:a:vendor:product:1.0:*:*:*:*:*:*:*']],
+    'wildcard with qualifier' => [['criteria' => 'cpe:2.3:a:vendor:product:*:*:*:*:*:*:*:*', 'versionEndExcluding' => '2.0']],
+    'na with qualifier' => [['criteria' => 'cpe:2.3:a:vendor:product:-:*:*:*:*:*:*:*', 'versionEndExcluding' => '2.0']],
+]);
+
+/**
+ * @param  list<list<array<string, mixed>>>  $nodes  cpeMatch lists, one per node
+ * @return list<array<string, mixed>>
+ */
+function nvdAndConfig(array $nodes): array
+{
+    return [[
+        'operator' => 'AND',
+        'nodes' => array_map(fn (array $cpeMatch): array => ['operator' => 'OR', 'negate' => false, 'cpeMatch' => $cpeMatch], $nodes),
+    ]];
+}
+
+test('uses the non-vulnerable node of an AND configuration as plugs_into', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdAndConfig([
+        [['criteria' => 'cpe:2.3:o:sun:sunos:4.1.4:*:*:*:*:*:*:*', 'vulnerable' => false]],
+        [['criteria' => 'cpe:2.3:a:sendmail:sendmail:5:*:*:*:*:*:*:*', 'vulnerable' => true]],
+    ]));
+
+    expect($ranges)->toHaveCount(1)
+        ->and($ranges[0]->product)->toBe('sendmail')
+        ->and($ranges[0]->plugsInto)->toBe('sunos');
+});
+
+test('treats a versionless vulnerable node beside a versioned one as the platform', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdAndConfig([
+        [
+            ['criteria' => 'cpe:2.3:a:mark_jaquith:bad_behavior:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '2.0.46'],
+            ['criteria' => 'cpe:2.3:a:mark_jaquith:bad_behavior:2.2.0:*:*:*:*:*:*:*', 'vulnerable' => true],
+        ],
+        [['criteria' => 'cpe:2.3:a:wordpress:wordpress:-:*:*:*:*:*:*:*', 'vulnerable' => true]],
+    ]));
+
+    expect(array_map(fn ($range) => [$range->product, $range->plugsInto], $ranges))->toBe([
+        ['bad_behavior', 'wordpress'],
+        ['bad_behavior', 'wordpress'],
+    ]);
+});
+
+test('emits every node of an AND configuration when all of them are versioned', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdAndConfig([
+        [['criteria' => 'cpe:2.3:a:adobe:flash_player:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndExcluding' => '11.2.202.229']],
+        [['criteria' => 'cpe:2.3:a:google:chrome:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndExcluding' => '18.0.1025.151']],
+    ]));
+
+    expect(array_map(fn ($range) => [$range->product, $range->plugsInto], $ranges))->toBe([
+        ['flash_player', null],
+        ['chrome', null],
+    ]);
+});
+
+test('emits every node of an AND configuration when none of them are versioned', function () {
+    $ranges = (new NVDRangeParser)->parse(nvdAndConfig([
+        [['criteria' => 'cpe:2.3:a:acme:plugin:*:*:*:*:*:*:*:*', 'vulnerable' => true]],
+        [['criteria' => 'cpe:2.3:a:wordpress:wordpress:-:*:*:*:*:*:*:*', 'vulnerable' => true]],
+    ]));
+
+    expect(array_map(fn ($range) => [$range->product, $range->versionScope], $ranges))->toBe([
+        ['plugin', 'any'],
+        ['wordpress', 'na'],
+    ]);
+});

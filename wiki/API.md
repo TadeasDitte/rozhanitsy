@@ -13,6 +13,7 @@ Everything returns JSON wrapped in `data`. Validation errors come back as `422` 
 | `version` | yes | version to check |
 | `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages |
 | `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Packagist` |
+| `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches from ranges where the source named the product but gave no versions (see [confidence](#confidence)) |
 
 Names are matched exactly, use [products](#search-products) to find the right spelling.
 
@@ -35,6 +36,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
         "cvss_score": 9.8,
         "severity": "CRITICAL",
         "known_exploited": true,
+        "confidence": "high",
         "fixed_in": "6.9.5",
         "affected_range": {
           "type": "a",
@@ -46,6 +48,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
           "version_excl_start": null,
           "version_incl_end": null,
           "version_excl_end": "6.9.5",
+          "version_scope": "range",
           "plugs_into": null
         }
       }
@@ -55,10 +58,24 @@ Names are matched exactly, use [products](#search-products) to find the right sp
 ```
 
 - `fixed_in` is the exclusive end of the matched range, `null` when no fix is known (e.g. OSV `last_affected` only)
-- `recommended_version` is the lowest version that fixes every match, `null` when nothing matched or any match has no fix
+- `recommended_version` is the lowest version that fixes every high confidence match, `null` when there is none or any of them has no fix
 - a record with several matching ranges is listed once
 - withdrawn (OSV) and rejected (NVD) records are ignored
 - the same issue from NVD and OSV shows up twice, link them through `aliases`
+
+### Confidence
+
+Every range has a `version_scope`:
+
+| `version_scope` | Meaning | In `check` |
+|---|---|---|
+| `range` | bounds come from the source; all bounds null means every version (e.g. OSV `introduced: 0` with no fix) | always |
+| `any` | NVD CPE version `*` with no bounds, NVD named the product but not which versions (mostly old, never re-analyzed CVEs) | only with `include_low_confidence=1`, `confidence: "low"` |
+| `na` | NVD CPE version `-` (not applicable) with no bounds | never |
+
+When a record has both a `range` and an `any` range matching, the `range` one wins.
+
+NVD configurations with a top-level `AND` ("vulnerable X running on / with Y") don't produce ranges for the platform node. The platform goes into `plugs_into` instead. A platform node is one with no vulnerable matches, or, in older NVD data that marks both sides vulnerable, one with no version info while another node has some.
 
 ### Batch
 
@@ -73,7 +90,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
 }
 ```
 
-Returns `data` as a list of check results in the same order.
+`include_low_confidence` goes next to `packages` and applies to the whole batch. Returns `data` as a list of check results in the same order.
 
 ## Vulnerability details
 
