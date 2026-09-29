@@ -54,8 +54,13 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
       - name: Setup Application
         run: composer setup
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
 
       - name: Run CI Checks
         run: composer ci:check
