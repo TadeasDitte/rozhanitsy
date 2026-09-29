@@ -10,6 +10,8 @@ x-app: &app
     depends_on:
         pgsql:
             condition: service_healthy
+        valkey:
+            condition: service_healthy
 
 services:
     migrate:
@@ -55,8 +57,20 @@ services:
             retries: 10
             timeout: 5s
 
+    valkey:
+        image: 'valkey/valkey:8-alpine'
+        restart: unless-stopped
+        volumes:
+            - 'valkey-data:/data'
+        healthcheck:
+            test: ['CMD', 'valkey-cli', 'ping']
+            interval: 5s
+            retries: 10
+            timeout: 5s
+
 volumes:
     app-storage:
     caddy-data:
     caddy-config:
     pgsql-data:
+    valkey-data:

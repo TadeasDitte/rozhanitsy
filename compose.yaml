@@ -23,6 +23,22 @@ services:
             - sail
         depends_on:
             - pgsql
+            - valkey
+    valkey:
+        image: 'valkey/valkey:8-alpine'
+        ports:
+            - '${FORWARD_REDIS_PORT:-6379}:6379'
+        volumes:
+            - 'sail-valkey:/data'
+        networks:
+            - sail
+        healthcheck:
+            test:
+                - CMD
+                - valkey-cli
+                - ping
+            retries: 3
+            timeout: 5s
     pgsql:
         image: 'postgres:18-alpine'
         ports:
@@ -53,4 +69,6 @@ networks:
         driver: bridge
 volumes:
     sail-pgsql:
+        driver: local
+    sail-valkey:
         driver: local

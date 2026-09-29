@@ -14,6 +14,7 @@ RUN install-php-extensions \
         pcntl \
         pdo_pgsql \
         pgsql \
+        redis \
         zip \
     && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 

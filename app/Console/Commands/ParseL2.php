@@ -6,6 +6,7 @@ use App\Ingestion\ParserResolver;
 use App\Ingestion\RangeResolvingRunner;
 use App\Models\ParsedRecord;
 use App\Models\Source;
+use App\Services\VulnerabilityDataCache;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -14,7 +15,7 @@ use Illuminate\Console\Command;
 #[Description('Run Layer 2 resolution: expand parsed_records.raw_ranges into version_ranges')]
 final class ParseL2 extends Command
 {
-    public function handle(ParserResolver $resolver): int
+    public function handle(ParserResolver $resolver, VulnerabilityDataCache $cache): int
     {
         $sources = $this->argument('source')
             ? Source::where('slug', $this->argument('source'))->get()
@@ -66,6 +67,8 @@ final class ParseL2 extends Command
             $bar->finish();
             $this->newLine();
         }
+
+        $cache->flush();
 
         return self::SUCCESS;
     }
