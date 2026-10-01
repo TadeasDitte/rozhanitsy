@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.1.0...v2.2.0) (2026-10-01)
+
+
+### Features
+
+* issue templates ([2dc593b](https://github.com/TadeasDitte/rozhanitsy/commit/2dc593b2de3937b9159018def08281859fb743c5))
+* issue templates ([57969ad](https://github.com/TadeasDitte/rozhanitsy/commit/57969ad6deb9a44306b56acd9cb810f57aa529bf))
+
 ## [2.1.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.0.0...v2.1.0) (2026-10-01)
 
 
