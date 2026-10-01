@@ -129,7 +129,7 @@ test('--rerun replaces stale aliases', function () {
     expect($parsed->aliases()->pluck('alias')->all())->toBe(['CVE-2026-1']);
 });
 
-test('--partition only parses records in its slice', function () {
+test('--partition only parses records within its id range', function () {
     $source = Source::factory()->create(['slug' => 'osv']);
     $records = IngestRecord::factory()->count(4)->create([
         'source_id' => $source->id,
@@ -137,30 +137,50 @@ test('--partition only parses records in its slice', function () {
         'raw_payload' => ['id' => 'GHSA-part', 'summary' => 'x'],
     ]);
 
-    $this->artisan('parse:l1', ['source' => 'osv', '--partition' => '1/2'])->assertSuccessful();
+    $this->artisan('parse:l1', ['source' => 'osv', '--partition' => "{$records[1]->id}-{$records[2]->id}"])->assertSuccessful();
 
-    foreach ($records as $record) {
-        expect($record->refresh()->processing_status)->toBe($record->id % 2 === 1 ? 'processed' : 'pending');
+    expect($records->map(fn (IngestRecord $record) => $record->refresh()->processing_status)->all())
+        ->toBe(['pending', 'processed', 'processed', 'pending']);
+});
+
+test('--workers splits the pending records into even id ranges, one worker process each', function () {
+    Process::fake();
+    $source = Source::factory()->create(['slug' => 'osv']);
+    $pending = IngestRecord::factory()->count(4)->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+    IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'processed']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 2])->assertSuccessful();
+
+    Process::assertRanTimes(fn (PendingProcess $process) => in_array('parse:l1', $process->command, true), 2);
+
+    foreach (["{$pending[0]->id}-{$pending[1]->id}", "{$pending[2]->id}-{$pending[3]->id}"] as $partition) {
+        Process::assertRan(fn (PendingProcess $process) => in_array('osv', $process->command, true)
+            && in_array("--partition={$partition}", $process->command, true));
     }
 });
 
-test('--workers fans out one partitioned worker process per worker', function () {
+test('--workers advances the progress bar by the ticks the workers print', function () {
+    Process::fake(['*' => Process::result(output: "\x06\x06")]);
+    $source = Source::factory()->create(['slug' => 'osv']);
+    IngestRecord::factory()->count(4)->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 2])
+        ->expectsOutputToContain('4/4')
+        ->assertSuccessful();
+});
+
+test('--workers never starts more workers than there are pending records', function () {
     Process::fake();
     $source = Source::factory()->create(['slug' => 'osv']);
     IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
 
     $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 3])->assertSuccessful();
 
-    Process::assertRanTimes(fn (PendingProcess $process) => in_array('parse:l1', $process->command, true), 3);
-
-    foreach (['0/3', '1/3', '2/3'] as $partition) {
-        Process::assertRan(fn (PendingProcess $process) => in_array('osv', $process->command, true)
-            && in_array("--partition={$partition}", $process->command, true));
-    }
+    Process::assertRanTimes(fn (PendingProcess $process) => in_array('parse:l1', $process->command, true), 1);
 });
 
 test('--workers fails when a worker process fails', function () {
-    Process::fake(['*' => Process::result(errorOutput: 'worker blew up', exitCode: 1)]);
+    Process::fake(['*' => Process::result(output: "\x06worker blew up", exitCode: 1)]);
     $source = Source::factory()->create(['slug' => 'osv']);
     IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
 

@@ -34,7 +34,7 @@ Takes the same `--retry-failed` and `--rerun` flags as `parse:l1`
 
 ## Parallelism
 
-`parse:l1`, `parse:l2` and `parse:fast` take `--workers=N` (default 1). The command does the requeueing itself, then splits the pending records into N slices (`id % N`) and runs each slice in its own `php artisan` child process, while showing one combined progress bar. Each worker uses its own DB connection, so keep N below your Postgres `max_connections`.
-The `--partition=INDEX/COUNT` option that the workers receive can also be passed by hand, for example to split a run across machines.
+`parse:l1`, `parse:l2` and `parse:fast` take `--workers=N` (default 1). The command does the requeueing itself, then splits the pending records into N contiguous id ranges of roughly equal size and runs each range in its own `php artisan` child process, while showing one combined progress bar. Each worker uses its own DB connection, so keep N below your Postgres `max_connections`.
+The `--partition=FIRST_ID-LAST_ID` option that the workers receive can also be passed by hand, for example to split a run across machines.
 
 `ingest:osv-sync --workers=N` downloads up to N record JSONs at once instead of one after another.

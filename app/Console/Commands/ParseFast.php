@@ -14,8 +14,9 @@ use App\Services\VulnerabilityDataCache;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 
-#[Signature('parse:fast {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process the INDEX/COUNT slice of records}')]
+#[Signature('parse:fast {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process records with ids in FIRST_ID-LAST_ID}')]
 #[Description('Run every parse layer per record: each pending ingest_record goes through L1 and L2 before the next one')]
 final class ParseFast extends Command
 {
@@ -44,7 +45,7 @@ final class ParseFast extends Command
 
             if ($partition !== null) {
                 (new PipelineRunner(new RecordParsingRunner($recordParser), $rangeResolving))
-                    ->run($source, partition: $partition);
+                    ->run($source, $this->workerProgressTick(), $partition);
 
                 continue;
             }
@@ -65,13 +66,13 @@ final class ParseFast extends Command
                 }
             }
 
-            $pending = $this->pendingCount($source);
+            $pending = $this->pendingRecords($source)->count();
 
             if ($pending > 0) {
                 $this->info("Parsing {$pending} pending records for {$source->slug}...");
 
                 if ($workers > 1) {
-                    $allSucceeded = $this->runInWorkers('parse:fast', [$source->slug], $workers, $pending, fn () => $this->pendingCount($source)) && $allSucceeded;
+                    $allSucceeded = $this->runInWorkers('parse:fast', [$source->slug], $workers, $this->pendingRecords($source)) && $allSucceeded;
                 } else {
                     $bar = $this->output->createProgressBar($pending);
                     $bar->start();
@@ -98,11 +99,13 @@ final class ParseFast extends Command
         return $allSucceeded ? self::SUCCESS : self::FAILURE;
     }
 
-    private function pendingCount(Source $source): int
+    /**
+     * @return Builder<IngestRecord>
+     */
+    private function pendingRecords(Source $source): Builder
     {
         return IngestRecord::where('source_id', $source->id)
-            ->where('processing_status', 'pending')
-            ->count();
+            ->where('processing_status', 'pending');
     }
 
     private function rangeResolvingRunner(ParserResolver $resolver, Source $source): ?RangeResolvingRunner
@@ -133,7 +136,7 @@ final class ParseFast extends Command
      */
     private function resolveLeftovers(RangeResolvingRunner $rangeResolving, Source $source, int $workers): bool
     {
-        $unresolved = $this->unresolvedCount($source);
+        $unresolved = $this->unresolvedRecords($source)->count();
 
         if ($unresolved === 0) {
             return true;
@@ -142,7 +145,7 @@ final class ParseFast extends Command
         $this->info("Resolving {$unresolved} leftover parsed records for {$source->slug}...");
 
         if ($workers > 1) {
-            return $this->runInWorkers('parse:l2', [$source->slug], $workers, $unresolved, fn () => $this->unresolvedCount($source));
+            return $this->runInWorkers('parse:l2', [$source->slug], $workers, $this->unresolvedRecords($source));
         }
 
         $bar = $this->output->createProgressBar($unresolved);
@@ -156,10 +159,12 @@ final class ParseFast extends Command
         return true;
     }
 
-    private function unresolvedCount(Source $source): int
+    /**
+     * @return Builder<ParsedRecord>
+     */
+    private function unresolvedRecords(Source $source): Builder
     {
         return ParsedRecord::where('source_id', $source->id)
-            ->whereNull('resolved_at')
-            ->count();
+            ->whereNull('resolved_at');
     }
 }

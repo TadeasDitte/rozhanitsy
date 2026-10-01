@@ -102,15 +102,12 @@ test('--workers runs the pipeline and the leftover resolution in partitioned wor
     Process::fake();
     Format::factory()->purl()->create();
     $source = Source::factory()->create(['slug' => 'osv']);
-    IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
-    ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => fastOsvPayload('GHSA-leftover')['affected']]);
+    IngestRecord::factory()->count(2)->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+    ParsedRecord::factory()->ofSource($source)->count(2)->create(['raw_ranges' => fastOsvPayload('GHSA-leftover')['affected']]);
 
     $this->artisan('parse:fast', ['source' => 'osv', '--workers' => 2])->assertSuccessful();
 
     foreach (['parse:fast', 'parse:l2'] as $command) {
-        foreach (['0/2', '1/2'] as $partition) {
-            Process::assertRan(fn (PendingProcess $process) => in_array($command, $process->command, true)
-                && in_array("--partition={$partition}", $process->command, true));
-        }
+        Process::assertRanTimes(fn (PendingProcess $process) => in_array($command, $process->command, true), 2);
     }
 });

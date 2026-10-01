@@ -11,8 +11,9 @@ use App\Services\VulnerabilityDataCache;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 
-#[Signature('parse:l1 {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process the INDEX/COUNT slice of records}')]
+#[Signature('parse:l1 {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process records with ids in FIRST_ID-LAST_ID}')]
 #[Description('Run Layer 1 parsing against pending ingest_records')]
 final class ParseL1 extends Command
 {
@@ -38,7 +39,7 @@ final class ParseL1 extends Command
             }
 
             if ($partition !== null) {
-                (new RecordParsingRunner($parser))->run($source, partition: $partition);
+                (new RecordParsingRunner($parser))->run($source, $this->workerProgressTick(), $partition);
 
                 continue;
             }
@@ -59,7 +60,7 @@ final class ParseL1 extends Command
                 }
             }
 
-            $pending = $this->pendingCount($source);
+            $pending = $this->pendingRecords($source)->count();
 
             if ($pending === 0) {
                 $this->info("Nothing pending for {$source->slug}");
@@ -70,7 +71,7 @@ final class ParseL1 extends Command
             $this->info("Parsing {$pending} pending records for {$source->slug}...");
 
             if ($workers > 1) {
-                $allSucceeded = $this->runInWorkers('parse:l1', [$source->slug], $workers, $pending, fn () => $this->pendingCount($source)) && $allSucceeded;
+                $allSucceeded = $this->runInWorkers('parse:l1', [$source->slug], $workers, $this->pendingRecords($source)) && $allSucceeded;
 
                 continue;
             }
@@ -91,10 +92,12 @@ final class ParseL1 extends Command
         return $allSucceeded ? self::SUCCESS : self::FAILURE;
     }
 
-    private function pendingCount(Source $source): int
+    /**
+     * @return Builder<IngestRecord>
+     */
+    private function pendingRecords(Source $source): Builder
     {
         return IngestRecord::where('source_id', $source->id)
-            ->where('processing_status', 'pending')
-            ->count();
+            ->where('processing_status', 'pending');
     }
 }

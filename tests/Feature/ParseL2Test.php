@@ -233,14 +233,13 @@ test('stores the version scope of each range', function () {
         ->toBe(['router' => 'na', 'app' => 'any']);
 });
 
-test('--partition only resolves records in its slice', function () {
+test('--partition only resolves records within its id range', function () {
     seedL2Formats();
     $source = Source::factory()->create(['slug' => 'nvd']);
     $records = ParsedRecord::factory()->ofSource($source)->count(4)->create(['raw_ranges' => l2NvdConfigurations()]);
 
-    $this->artisan('parse:l2', ['source' => 'nvd', '--partition' => '0/2'])->assertSuccessful();
+    $this->artisan('parse:l2', ['source' => 'nvd', '--partition' => "{$records[0]->id}-{$records[1]->id}"])->assertSuccessful();
 
-    foreach ($records as $record) {
-        expect($record->refresh()->resolved_at !== null)->toBe($record->id % 2 === 0);
-    }
+    expect($records->map(fn (ParsedRecord $record) => $record->refresh()->resolved_at !== null)->all())
+        ->toBe([true, true, false, false]);
 });
