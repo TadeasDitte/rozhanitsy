@@ -35,6 +35,10 @@ final class NVDRecordParser implements SourceRecordParser
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $metrics
+     * @return array{?float, ?string, ?string, ?string}
+     */
     private function extractCvss(array $metrics): array
     {
         foreach (['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2'] as $key) {
@@ -53,6 +57,9 @@ final class NVDRecordParser implements SourceRecordParser
         return [null, null, null, null];
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $descriptions
+     */
     private function extractEnglishDescription(array $descriptions): ?string
     {
         foreach ($descriptions as $description) {
@@ -64,6 +71,10 @@ final class NVDRecordParser implements SourceRecordParser
         return null;
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $weaknesses
+     * @return array<int, string>
+     */
     private function extractWeaknesses(array $weaknesses): array
     {
         $cweIds = [];
@@ -79,6 +90,10 @@ final class NVDRecordParser implements SourceRecordParser
         return array_values(array_unique($cweIds));
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $references
+     * @return array<int, array{url: string, tags: array<int, string>}>
+     */
     private function extractReferences(array $references): array
     {
         return array_map(

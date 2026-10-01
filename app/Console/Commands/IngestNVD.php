@@ -101,6 +101,9 @@ class IngestNvd extends Command
         usleep((int) ($delaySeconds * 1_000_000));
     }
 
+    /**
+     * @return array{string, string}
+     */
     private function resolveWindow(SyncState $syncState, bool $full): array
     {
         $end = Carbon::now('UTC');

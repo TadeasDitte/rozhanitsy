@@ -8,6 +8,7 @@ use App\Services\Ingestion\IngestRecordWriter;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use ZipArchive;
 
@@ -48,12 +49,12 @@ class IngestOsv extends Command
         $zip->extractTo($extractPath);
         $zip->close();
 
-        $files = glob("{$extractPath}/*.json");
+        $files = glob("{$extractPath}/*.json") ?: [];
         $bar = $this->output->createProgressBar(count($files));
 
         $written = 0;
         foreach ($files as $file) {
-            $payload = json_decode(file_get_contents($file), true);
+            $payload = File::json($file);
             if (isset($payload['id'])) {
                 $this->writer->upsert($source->id, $payload['id'], $payload);
                 $written++;

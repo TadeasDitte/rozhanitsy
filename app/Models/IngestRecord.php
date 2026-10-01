@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\IngestRecordFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $source_id
  * @property string $external_id
- * @property array $raw_payload
+ * @property array<string, mixed> $raw_payload
  * @property Carbon $fetched_at
  * @property Carbon|null $processed_at
  * @property string $processing_status
@@ -31,6 +32,7 @@ use Illuminate\Support\Carbon;
 
 class IngestRecord extends Model
 {
+    /** @use HasFactory<IngestRecordFactory> */
     use HasFactory;
 
     protected function casts(): array

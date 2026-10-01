@@ -12,6 +12,7 @@ use Illuminate\Console\Command;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
+use RuntimeException;
 use Throwable;
 
 #[Signature('ingest:osv-sync {--full : Ignore sync_states and reprocess the entire modified_id.csv} {--workers=1 : number of record downloads to run in parallel}')]
@@ -62,6 +63,9 @@ class IngestOsvSync extends Command
 
         $totalLines = 0;
         $handle = fopen($csvPath, 'r');
+        if ($handle === false) {
+            throw new RuntimeException("Unable to open {$csvPath}");
+        }
         while (fgets($handle) !== false) {
             $totalLines++;
         }

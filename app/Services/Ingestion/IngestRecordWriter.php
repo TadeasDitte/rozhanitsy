@@ -6,6 +6,9 @@ use App\Models\IngestRecord;
 
 class IngestRecordWriter
 {
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     public function upsert(int $sourceId, string $externalId, array $payload): IngestRecord
     {
         $existing = IngestRecord::where('source_id', $sourceId)
@@ -29,11 +32,18 @@ class IngestRecordWriter
         );
     }
 
+    /**
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $incoming
+     */
     private function unchanged(array $existing, array $incoming): bool
     {
         return $this->normalize($existing) === $this->normalize($incoming);
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     private function normalize(array $data): string
     {
         $sort = function (&$arr) use (&$sort) {
@@ -48,6 +58,6 @@ class IngestRecordWriter
         };
         $sort($data);
 
-        return json_encode($data);
+        return json_encode($data, JSON_THROW_ON_ERROR);
     }
 }
