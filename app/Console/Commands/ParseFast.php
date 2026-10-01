@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Concerns\RunsParallelWorkers;
 use App\Ingestion\ParserResolver;
 use App\Ingestion\PipelineRunner;
 use App\Ingestion\RangeResolvingRunner;
@@ -14,12 +15,18 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('parse:fast {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again}')]
+#[Signature('parse:fast {source? : source slug, defaults to all} {--retry-failed : requeue failed records before parsing} {--rerun : requeue already-processed records so they are parsed again} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process the INDEX/COUNT slice of records}')]
 #[Description('Run every parse layer per record: each pending ingest_record goes through L1 and L2 before the next one')]
 final class ParseFast extends Command
 {
+    use RunsParallelWorkers;
+
     public function handle(ParserResolver $resolver, VulnerabilityDataCache $cache): int
     {
+        $partition = $this->partition();
+        $workers = $partition === null ? $this->workerCount() : 1;
+        $allSucceeded = true;
+
         $sources = $this->argument('source')
             ? Source::where('slug', $this->argument('source'))->get()
             : Source::all();
@@ -34,6 +41,13 @@ final class ParseFast extends Command
             }
 
             $rangeResolving = $this->rangeResolvingRunner($resolver, $source);
+
+            if ($partition !== null) {
+                (new PipelineRunner(new RecordParsingRunner($recordParser), $rangeResolving))
+                    ->run($source, partition: $partition);
+
+                continue;
+            }
 
             if ($this->option('retry-failed')) {
                 $requeued = RecordParsingRunner::requeueFailed($source);
@@ -51,32 +65,44 @@ final class ParseFast extends Command
                 }
             }
 
-            $pending = IngestRecord::where('source_id', $source->id)
-                ->where('processing_status', 'pending')
-                ->count();
+            $pending = $this->pendingCount($source);
 
             if ($pending > 0) {
                 $this->info("Parsing {$pending} pending records for {$source->slug}...");
-                $bar = $this->output->createProgressBar($pending);
-                $bar->start();
 
-                (new PipelineRunner(new RecordParsingRunner($recordParser), $rangeResolving))
-                    ->run($source, fn () => $bar->advance());
+                if ($workers > 1) {
+                    $allSucceeded = $this->runInWorkers('parse:fast', [$source->slug], $workers, $pending, fn () => $this->pendingCount($source)) && $allSucceeded;
+                } else {
+                    $bar = $this->output->createProgressBar($pending);
+                    $bar->start();
 
-                $bar->finish();
-                $this->newLine();
+                    (new PipelineRunner(new RecordParsingRunner($recordParser), $rangeResolving))
+                        ->run($source, fn () => $bar->advance());
+
+                    $bar->finish();
+                    $this->newLine();
+                }
             } else {
                 $this->info("Nothing pending for {$source->slug}");
             }
 
             if ($rangeResolving !== null) {
-                $this->resolveLeftovers($rangeResolving, $source);
+                $allSucceeded = $this->resolveLeftovers($rangeResolving, $source, $workers) && $allSucceeded;
             }
         }
 
-        $cache->flush();
+        if ($partition === null) {
+            $cache->flush();
+        }
 
-        return self::SUCCESS;
+        return $allSucceeded ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function pendingCount(Source $source): int
+    {
+        return IngestRecord::where('source_id', $source->id)
+            ->where('processing_status', 'pending')
+            ->count();
     }
 
     private function rangeResolvingRunner(ParserResolver $resolver, Source $source): ?RangeResolvingRunner
@@ -102,18 +128,23 @@ final class ParseFast extends Command
 
     /**
      * Picks up parsed records that were left unresolved by earlier L1-only runs or failed L2 attempts.
+     *
+     * @return bool whether every worker exited successfully
      */
-    private function resolveLeftovers(RangeResolvingRunner $rangeResolving, Source $source): void
+    private function resolveLeftovers(RangeResolvingRunner $rangeResolving, Source $source, int $workers): bool
     {
-        $unresolved = ParsedRecord::where('source_id', $source->id)
-            ->whereNull('resolved_at')
-            ->count();
+        $unresolved = $this->unresolvedCount($source);
 
         if ($unresolved === 0) {
-            return;
+            return true;
         }
 
         $this->info("Resolving {$unresolved} leftover parsed records for {$source->slug}...");
+
+        if ($workers > 1) {
+            return $this->runInWorkers('parse:l2', [$source->slug], $workers, $unresolved, fn () => $this->unresolvedCount($source));
+        }
+
         $bar = $this->output->createProgressBar($unresolved);
         $bar->start();
 
@@ -121,5 +152,14 @@ final class ParseFast extends Command
 
         $bar->finish();
         $this->newLine();
+
+        return true;
+    }
+
+    private function unresolvedCount(Source $source): int
+    {
+        return ParsedRecord::where('source_id', $source->id)
+            ->whereNull('resolved_at')
+            ->count();
     }
 }

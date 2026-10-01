@@ -4,6 +4,8 @@ use App\Models\Alias;
 use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Process;
 
 test('--rerun requeues already-processed records and parses them again', function () {
     $source = Source::factory()->create(['slug' => 'osv']);
@@ -126,3 +128,49 @@ test('--rerun replaces stale aliases', function () {
 
     expect($parsed->aliases()->pluck('alias')->all())->toBe(['CVE-2026-1']);
 });
+
+test('--partition only parses records in its slice', function () {
+    $source = Source::factory()->create(['slug' => 'osv']);
+    $records = IngestRecord::factory()->count(4)->create([
+        'source_id' => $source->id,
+        'processing_status' => 'pending',
+        'raw_payload' => ['id' => 'GHSA-part', 'summary' => 'x'],
+    ]);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--partition' => '1/2'])->assertSuccessful();
+
+    foreach ($records as $record) {
+        expect($record->refresh()->processing_status)->toBe($record->id % 2 === 1 ? 'processed' : 'pending');
+    }
+});
+
+test('--workers fans out one partitioned worker process per worker', function () {
+    Process::fake();
+    $source = Source::factory()->create(['slug' => 'osv']);
+    IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 3])->assertSuccessful();
+
+    Process::assertRanTimes(fn (PendingProcess $process) => in_array('parse:l1', $process->command, true), 3);
+
+    foreach (['0/3', '1/3', '2/3'] as $partition) {
+        Process::assertRan(fn (PendingProcess $process) => in_array('osv', $process->command, true)
+            && in_array("--partition={$partition}", $process->command, true));
+    }
+});
+
+test('--workers fails when a worker process fails', function () {
+    Process::fake(['*' => Process::result(errorOutput: 'worker blew up', exitCode: 1)]);
+    $source = Source::factory()->create(['slug' => 'osv']);
+    IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 2])
+        ->expectsOutputToContain('worker blew up')
+        ->assertFailed();
+});
+
+test('--workers rejects a non-positive count', function () {
+    Source::factory()->create(['slug' => 'osv']);
+
+    $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 0]);
+})->throws(InvalidArgumentException::class);

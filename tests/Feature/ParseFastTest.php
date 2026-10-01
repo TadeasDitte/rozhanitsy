@@ -4,6 +4,8 @@ use App\Models\Format;
 use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Process;
 
 /**
  * @return array<string, mixed>
@@ -94,4 +96,21 @@ test('--rerun reparses processed records through both layers', function () {
     expect($parsed->refresh()->external_id)->toBe('GHSA-rerun');
     expect($parsed->resolved_at)->not->toBeNull();
     expect($parsed->versionRanges)->toHaveCount(1);
+});
+
+test('--workers runs the pipeline and the leftover resolution in partitioned worker processes', function () {
+    Process::fake();
+    Format::factory()->purl()->create();
+    $source = Source::factory()->create(['slug' => 'osv']);
+    IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
+    ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => fastOsvPayload('GHSA-leftover')['affected']]);
+
+    $this->artisan('parse:fast', ['source' => 'osv', '--workers' => 2])->assertSuccessful();
+
+    foreach (['parse:fast', 'parse:l2'] as $command) {
+        foreach (['0/2', '1/2'] as $partition) {
+            Process::assertRan(fn (PendingProcess $process) => in_array($command, $process->command, true)
+                && in_array("--partition={$partition}", $process->command, true));
+        }
+    }
 });

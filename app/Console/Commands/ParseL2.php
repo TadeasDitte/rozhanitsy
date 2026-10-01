@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Concerns\RunsParallelWorkers;
 use App\Ingestion\ParserResolver;
 use App\Ingestion\RangeResolvingRunner;
 use App\Models\ParsedRecord;
@@ -11,12 +12,18 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('parse:l2 {source? : source slug, defaults to all} {--rerun : re-resolve already-resolved records}')]
+#[Signature('parse:l2 {source? : source slug, defaults to all} {--rerun : re-resolve already-resolved records} {--workers=1 : number of parallel worker processes} {--partition= : internal, set by --workers: only process the INDEX/COUNT slice of records}')]
 #[Description('Run Layer 2 resolution: expand parsed_records.raw_ranges into version_ranges')]
 final class ParseL2 extends Command
 {
+    use RunsParallelWorkers;
+
     public function handle(ParserResolver $resolver, VulnerabilityDataCache $cache): int
     {
+        $partition = $this->partition();
+        $workers = $partition === null ? $this->workerCount() : 1;
+        $allSucceeded = true;
+
         $sources = $this->argument('source')
             ? Source::where('slug', $this->argument('source'))->get()
             : Source::all();
@@ -38,6 +45,12 @@ final class ParseL2 extends Command
                 continue;
             }
 
+            if ($partition !== null) {
+                (new RangeResolvingRunner($parser, $formatId))->run($source, partition: $partition);
+
+                continue;
+            }
+
             if ($this->option('rerun')) {
                 $reset = ParsedRecord::where('source_id', $source->id)
                     ->whereNotNull('resolved_at')
@@ -48,9 +61,7 @@ final class ParseL2 extends Command
                 }
             }
 
-            $pending = ParsedRecord::where('source_id', $source->id)
-                ->whereNull('resolved_at')
-                ->count();
+            $pending = $this->unresolvedCount($source);
 
             if ($pending === 0) {
                 $this->info("Nothing to resolve for {$source->slug}");
@@ -59,6 +70,13 @@ final class ParseL2 extends Command
             }
 
             $this->info("Resolving {$pending} parsed records for {$source->slug}...");
+
+            if ($workers > 1) {
+                $allSucceeded = $this->runInWorkers('parse:l2', [$source->slug], $workers, $pending, fn () => $this->unresolvedCount($source)) && $allSucceeded;
+
+                continue;
+            }
+
             $bar = $this->output->createProgressBar($pending);
             $bar->start();
 
@@ -68,8 +86,17 @@ final class ParseL2 extends Command
             $this->newLine();
         }
 
-        $cache->flush();
+        if ($partition === null) {
+            $cache->flush();
+        }
 
-        return self::SUCCESS;
+        return $allSucceeded ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function unresolvedCount(Source $source): int
+    {
+        return ParsedRecord::where('source_id', $source->id)
+            ->whereNull('resolved_at')
+            ->count();
     }
 }

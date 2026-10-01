@@ -232,3 +232,15 @@ test('stores the version scope of each range', function () {
     expect($record->versionRanges()->pluck('version_scope', 'product')->all())
         ->toBe(['router' => 'na', 'app' => 'any']);
 });
+
+test('--partition only resolves records in its slice', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $records = ParsedRecord::factory()->ofSource($source)->count(4)->create(['raw_ranges' => l2NvdConfigurations()]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd', '--partition' => '0/2'])->assertSuccessful();
+
+    foreach ($records as $record) {
+        expect($record->refresh()->resolved_at !== null)->toBe($record->id % 2 === 0);
+    }
+});

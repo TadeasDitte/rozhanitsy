@@ -16,9 +16,10 @@ final class RangeResolvingRunner
         private readonly int $formatId,
     ) {}
 
-    public function run(Source $source, ?callable $onEach = null): void
+    public function run(Source $source, ?callable $onEach = null, ?Partition $partition = null): void
     {
         ParsedRecord::query()
+            ->when($partition !== null, fn ($query) => $partition->apply($query))
             ->where('source_id', $source->id)
             ->whereNull('resolved_at')
             ->chunkById(500, function ($records) use ($onEach) {

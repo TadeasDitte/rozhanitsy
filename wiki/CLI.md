@@ -19,6 +19,7 @@ If left unspecified it downloads the root all.zip
 
 And `php artisan ingest:osv-sync`
 checks modified_id.csv and downloads and updates only the modified entries since the last ingest
+Add `--workers=N` to download N records concurrently
 
 ## Parse
 
@@ -30,3 +31,10 @@ It passes raw data from sources through source specific parsers into a parsed_re
 `php artisan parse:fast` runs every layer per record instead of per layer: each pending ingest record goes through L1 (parsed_records + aliases) and straight into L2 (version_ranges) before the next one is picked up.
 Afterwards it also resolves any parsed_records still left unresolved from earlier L1-only runs.
 Takes the same `--retry-failed` and `--rerun` flags as `parse:l1`
+
+## Parallelism
+
+`parse:l1`, `parse:l2` and `parse:fast` take `--workers=N` (default 1). The command does the requeueing itself, then splits the pending records into N slices (`id % N`) and runs each slice in its own `php artisan` child process, while showing one combined progress bar. Each worker uses its own DB connection, so keep N below your Postgres `max_connections`.
+The `--partition=INDEX/COUNT` option that the workers receive can also be passed by hand, for example to split a run across machines.
+
+`ingest:osv-sync --workers=N` downloads up to N record JSONs at once instead of one after another.
