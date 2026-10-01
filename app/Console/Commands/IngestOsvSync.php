@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Concerns\LogsCommandOutput;
 use App\Models\Source;
 use App\Models\SyncState;
 use App\Services\Ingestion\IngestRecordWriter;
@@ -19,6 +20,8 @@ use Throwable;
 #[Description('Incrementally sync OSV vulnerabilities via modified_id.csv, without re-downloading all.zip')]
 class IngestOsvSync extends Command
 {
+    use LogsCommandOutput;
+
     private const BATCH_SIZE_PER_WORKER = 10;
 
     private int $processed = 0;
@@ -47,11 +50,12 @@ class IngestOsvSync extends Command
         $lastCursorTime = $lastCursor ? Carbon::parse($lastCursor) : null;
 
         if (! $lastCursorTime) {
-            $this->warn('No cursor found — this will process the ENTIRE modified_id.csv (one HTTP request per record). Are you sure? If not, Ctrl+C now and set a cursor first.');
+            $this->logWarning('No cursor found — this will process the ENTIRE modified_id.csv (one HTTP request per record). Are you sure? If not, Ctrl+C now and set a cursor first.');
         }
 
         $csvUrl = "{$baseUrl}/modified_id.csv";
-        $this->info("Streaming {$csvUrl}".($lastCursorTime ? " (since {$lastCursorTime})" : ' (full)'));
+        $this->logInfo("Streaming {$csvUrl}".($lastCursorTime ? " (since {$lastCursorTime})" : ' (full)'), ['url' => $csvUrl, 'since' => $lastCursorTime?->toIso8601ZuluString(), 'workers' => $workers]);
+        $startedAt = now();
 
         $csvPath = storage_path('app/tmp/osv-modified_id.csv');
         @mkdir(dirname($csvPath), recursive: true);
@@ -114,7 +118,8 @@ class IngestOsvSync extends Command
             ]);
         }
 
-        $this->info("Done, {$this->processed} records updated, {$this->skipped} skipped (not found).");
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+        $this->logInfo("Done, {$this->processed} records updated, {$this->skipped} skipped (not found) in {$durationSeconds}s.", ['records' => $this->processed, 'skipped' => $this->skipped, 'cursor' => $newestSeen, 'duration_seconds' => $durationSeconds]);
 
         return self::SUCCESS;
     }

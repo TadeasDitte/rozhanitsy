@@ -6,6 +6,7 @@ use App\Ingestion\Parsers\RangeParser;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use App\Models\VersionRange;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -67,7 +68,11 @@ final class RangeResolvingRunner
                 $record->update(['resolved_at' => now()]);
             });
         } catch (Throwable $e) {
-            report($e);
+            Context::scope(fn () => report($e), [
+                'source_id' => $record->source_id,
+                'parsed_record_id' => $record->id,
+                'external_id' => $record->external_id,
+            ]);
         }
     }
 }

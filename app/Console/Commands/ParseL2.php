@@ -8,6 +8,7 @@ use App\Ingestion\RangeResolvingRunner;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use App\Services\VulnerabilityDataCache;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -33,7 +34,7 @@ final class ParseL2 extends Command
             $parser = $resolver->rangeParser($source->slug);
 
             if ($parser === null) {
-                $this->warn("No range parser class found for slug [{$source->slug}], skipping");
+                $this->logWarning("No range parser class found for slug [{$source->slug}], skipping", ['source' => $source->slug]);
 
                 continue;
             }
@@ -41,7 +42,7 @@ final class ParseL2 extends Command
             $formatId = $resolver->formatId($source->slug);
 
             if ($formatId === null) {
-                $this->warn("No format row for slug [{$source->slug}], run FormatSeeder. Skipping");
+                $this->logWarning("No format row for slug [{$source->slug}], run FormatSeeder. Skipping", ['source' => $source->slug]);
 
                 continue;
             }
@@ -58,33 +59,34 @@ final class ParseL2 extends Command
                     ->update(['resolved_at' => null]);
 
                 if ($reset > 0) {
-                    $this->info("Reset {$reset} resolved records for {$source->slug}");
+                    $this->logInfo("Reset {$reset} resolved records for {$source->slug}", ['source' => $source->slug, 'reset' => $reset]);
                 }
             }
 
             $pending = $this->unresolvedRecords($source)->count();
 
             if ($pending === 0) {
-                $this->info("Nothing to resolve for {$source->slug}");
+                $this->logInfo("Nothing to resolve for {$source->slug}", ['source' => $source->slug]);
 
                 continue;
             }
 
-            $this->info("Resolving {$pending} parsed records for {$source->slug}...");
+            $this->logInfo("Resolving {$pending} parsed records for {$source->slug}...", ['source' => $source->slug, 'pending' => $pending, 'workers' => $workers]);
+            $startedAt = now();
 
             if ($workers > 1) {
                 $allSucceeded = $this->runInWorkers('parse:l2', [$source->slug], $workers, $this->unresolvedRecords($source)) && $allSucceeded;
+            } else {
+                $bar = $this->output->createProgressBar($pending);
+                $bar->start();
 
-                continue;
+                (new RangeResolvingRunner($parser, $formatId))->run($source, fn () => $bar->advance());
+
+                $bar->finish();
+                $this->newLine();
             }
 
-            $bar = $this->output->createProgressBar($pending);
-            $bar->start();
-
-            (new RangeResolvingRunner($parser, $formatId))->run($source, fn () => $bar->advance());
-
-            $bar->finish();
-            $this->newLine();
+            $this->logResolveSummary($source, $pending, $startedAt);
         }
 
         if ($partition === null) {
@@ -92,6 +94,26 @@ final class ParseL2 extends Command
         }
 
         return $allSucceeded ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function logResolveSummary(Source $source, int $pending, CarbonInterface $startedAt): void
+    {
+        $unresolved = $this->unresolvedRecords($source)->count();
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+
+        $this->logInfo("Resolved {$pending} records for {$source->slug} in {$durationSeconds}s", [
+            'source' => $source->slug,
+            'records' => $pending,
+            'unresolved' => $unresolved,
+            'duration_seconds' => $durationSeconds,
+        ]);
+
+        if ($unresolved > 0) {
+            $this->logWarning("{$unresolved} records could not be resolved for {$source->slug}, see the reported exceptions", [
+                'source' => $source->slug,
+                'unresolved' => $unresolved,
+            ]);
+        }
     }
 
     /**

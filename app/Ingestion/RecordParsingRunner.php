@@ -6,7 +6,9 @@ use App\Ingestion\Parsers\SourceRecordParser;
 use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class RecordParsingRunner
@@ -42,6 +44,14 @@ final class RecordParsingRunner
         return IngestRecord::where('source_id', $source->id)
             ->whereIn('processing_status', ['processed', 'skipped'])
             ->update(['processing_status' => 'pending', 'processed_at' => null, 'processing_error' => null]);
+    }
+
+    public static function failedSince(Source $source, CarbonInterface $since): int
+    {
+        return IngestRecord::where('source_id', $source->id)
+            ->where('processing_status', 'failed')
+            ->where('processed_at', '>=', $since->copy()->startOfSecond())
+            ->count();
     }
 
     public function processOne(IngestRecord $ingestRecord): ?ParsedRecord
@@ -91,6 +101,13 @@ final class RecordParsingRunner
                 'processing_status' => 'failed',
                 'processing_error' => $e->getMessage(),
                 'processed_at' => now(),
+            ]);
+
+            Log::warning('Failed to parse ingest record', [
+                'source_id' => $ingestRecord->source_id,
+                'ingest_record_id' => $ingestRecord->id,
+                'external_id' => $ingestRecord->external_id,
+                'error' => $e->getMessage(),
             ]);
 
             return null;

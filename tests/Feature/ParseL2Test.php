@@ -161,7 +161,9 @@ test('a record whose ranges cannot be parsed is reported and left unresolved', f
         ['nodes' => [['cpeMatch' => [['criteria' => 'garbage', 'vulnerable' => true]]]]],
     ]]);
 
-    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+    $this->artisan('parse:l2', ['source' => 'nvd'])
+        ->expectsOutputToContain('1 records could not be resolved for nvd')
+        ->assertSuccessful();
 
     expect($good->refresh()->resolved_at)->not->toBeNull();
     expect($good->versionRanges)->toHaveCount(2);

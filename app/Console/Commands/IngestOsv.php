@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Concerns\LogsCommandOutput;
 use App\Models\Source;
 use App\Models\SyncState;
 use App\Services\Ingestion\IngestRecordWriter;
@@ -16,6 +17,8 @@ use ZipArchive;
 #[Description('Pull an OSV ecosystem bulk export into ingest_records')]
 class IngestOsv extends Command
 {
+    use LogsCommandOutput;
+
     public function __construct(private IngestRecordWriter $writer)
     {
         parent::__construct();
@@ -34,7 +37,8 @@ class IngestOsv extends Command
 
         $slug = $ecosystem === 'All' ? 'all' : $ecosystem;
 
-        $this->info("Downloading {$url}");
+        $this->logInfo("Downloading {$url}", ['url' => $url, 'ecosystem' => $ecosystem]);
+        $startedAt = now();
         $zipPath = storage_path("app/tmp/osv-{$slug}.zip");
         @mkdir(dirname($zipPath), recursive: true);
 
@@ -76,7 +80,8 @@ class IngestOsv extends Command
             ]
         );
 
-        $this->info("Done, {$written} records written.");
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+        $this->logInfo("Done, {$written} records written in {$durationSeconds}s.", ['ecosystem' => $ecosystem, 'records' => $written, 'files' => count($files), 'duration_seconds' => $durationSeconds]);
 
         return self::SUCCESS;
     }

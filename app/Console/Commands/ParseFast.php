@@ -11,6 +11,7 @@ use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use App\Services\VulnerabilityDataCache;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -36,7 +37,7 @@ final class ParseFast extends Command
             $recordParser = $resolver->recordParser($source->slug);
 
             if ($recordParser === null) {
-                $this->warn("No parser class found for slug [{$source->slug}], skipping");
+                $this->logWarning("No parser class found for slug [{$source->slug}], skipping", ['source' => $source->slug]);
 
                 continue;
             }
@@ -54,7 +55,7 @@ final class ParseFast extends Command
                 $requeued = RecordParsingRunner::requeueFailed($source);
 
                 if ($requeued > 0) {
-                    $this->info("Requeued {$requeued} failed records for {$source->slug}");
+                    $this->logInfo("Requeued {$requeued} failed records for {$source->slug}", ['source' => $source->slug, 'requeued' => $requeued]);
                 }
             }
 
@@ -62,14 +63,15 @@ final class ParseFast extends Command
                 $requeued = RecordParsingRunner::requeueProcessed($source);
 
                 if ($requeued > 0) {
-                    $this->info("Requeued {$requeued} already-processed records for {$source->slug}");
+                    $this->logInfo("Requeued {$requeued} already-processed records for {$source->slug}", ['source' => $source->slug, 'requeued' => $requeued]);
                 }
             }
 
             $pending = $this->pendingRecords($source)->count();
 
             if ($pending > 0) {
-                $this->info("Parsing {$pending} pending records for {$source->slug}...");
+                $this->logInfo("Parsing {$pending} pending records for {$source->slug}...", ['source' => $source->slug, 'pending' => $pending, 'workers' => $workers]);
+                $startedAt = now();
 
                 if ($workers > 1) {
                     $allSucceeded = $this->runInWorkers('parse:fast', [$source->slug], $workers, $this->pendingRecords($source)) && $allSucceeded;
@@ -83,8 +85,10 @@ final class ParseFast extends Command
                     $bar->finish();
                     $this->newLine();
                 }
+
+                $this->logParseSummary($source, $pending, $startedAt);
             } else {
-                $this->info("Nothing pending for {$source->slug}");
+                $this->logInfo("Nothing pending for {$source->slug}", ['source' => $source->slug]);
             }
 
             if ($rangeResolving !== null) {
@@ -97,6 +101,26 @@ final class ParseFast extends Command
         }
 
         return $allSucceeded ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function logParseSummary(Source $source, int $pending, CarbonInterface $startedAt): void
+    {
+        $failed = RecordParsingRunner::failedSince($source, $startedAt);
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+
+        $this->logInfo("Parsed {$pending} records for {$source->slug} in {$durationSeconds}s", [
+            'source' => $source->slug,
+            'records' => $pending,
+            'failed' => $failed,
+            'duration_seconds' => $durationSeconds,
+        ]);
+
+        if ($failed > 0) {
+            $this->logWarning("{$failed} records failed to parse for {$source->slug}, requeue them with --retry-failed", [
+                'source' => $source->slug,
+                'failed' => $failed,
+            ]);
+        }
     }
 
     /**
@@ -113,7 +137,7 @@ final class ParseFast extends Command
         $rangeParser = $resolver->rangeParser($source->slug);
 
         if ($rangeParser === null) {
-            $this->warn("No range parser class found for slug [{$source->slug}], running L1 only");
+            $this->logWarning("No range parser class found for slug [{$source->slug}], running L1 only", ['source' => $source->slug]);
 
             return null;
         }
@@ -121,7 +145,7 @@ final class ParseFast extends Command
         $formatId = $resolver->formatId($source->slug);
 
         if ($formatId === null) {
-            $this->warn("No format row for slug [{$source->slug}], run FormatSeeder. Running L1 only");
+            $this->logWarning("No format row for slug [{$source->slug}], run FormatSeeder. Running L1 only", ['source' => $source->slug]);
 
             return null;
         }
@@ -142,7 +166,7 @@ final class ParseFast extends Command
             return true;
         }
 
-        $this->info("Resolving {$unresolved} leftover parsed records for {$source->slug}...");
+        $this->logInfo("Resolving {$unresolved} leftover parsed records for {$source->slug}...", ['source' => $source->slug, 'unresolved' => $unresolved]);
 
         if ($workers > 1) {
             return $this->runInWorkers('parse:l2', [$source->slug], $workers, $this->unresolvedRecords($source));

@@ -5,6 +5,7 @@ use App\Models\IngestRecord;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 test('--rerun requeues already-processed records and parses them again', function () {
@@ -179,7 +180,8 @@ test('--workers never starts more workers than there are pending records', funct
     Process::assertRanTimes(fn (PendingProcess $process) => in_array('parse:l1', $process->command, true), 1);
 });
 
-test('--workers fails when a worker process fails', function () {
+test('--workers fails and logs the output when a worker process fails', function () {
+    Log::spy();
     Process::fake(['*' => Process::result(output: "\x06worker blew up", exitCode: 1)]);
     $source = Source::factory()->create(['slug' => 'osv']);
     IngestRecord::factory()->create(['source_id' => $source->id, 'processing_status' => 'pending']);
@@ -187,6 +189,12 @@ test('--workers fails when a worker process fails', function () {
     $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 2])
         ->expectsOutputToContain('worker blew up')
         ->assertFailed();
+
+    Log::shouldHaveReceived('error')->with('worker 0 exited with code 1', Mockery::subset([
+        'command' => 'parse:l1',
+        'exit_code' => 1,
+        'output' => 'worker blew up',
+    ]))->once();
 });
 
 test('--workers rejects a non-positive count', function () {
@@ -194,3 +202,28 @@ test('--workers rejects a non-positive count', function () {
 
     $this->artisan('parse:l1', ['source' => 'osv', '--workers' => 0]);
 })->throws(InvalidArgumentException::class);
+
+test('logs each record that fails to parse and warns how many failed', function () {
+    Log::spy();
+    $source = Source::factory()->create(['slug' => 'osv']);
+    $ingest = IngestRecord::factory()->create([
+        'source_id' => $source->id,
+        'processing_status' => 'pending',
+        'raw_payload' => ['id' => 'GHSA-broke', 'aliases' => 'not-a-list'],
+    ]);
+
+    $this->artisan('parse:l1', ['source' => 'osv'])
+        ->expectsOutputToContain('1 records failed to parse for osv, requeue them with --retry-failed')
+        ->assertSuccessful();
+
+    expect($ingest->refresh()->processing_status)->toBe('failed');
+    Log::shouldHaveReceived('warning')->with('Failed to parse ingest record', Mockery::subset([
+        'ingest_record_id' => $ingest->id,
+        'external_id' => $ingest->external_id,
+    ]))->once();
+    Log::shouldHaveReceived('warning')->with('1 records failed to parse for osv, requeue them with --retry-failed', Mockery::subset([
+        'command' => 'parse:l1',
+        'source' => 'osv',
+        'failed' => 1,
+    ]))->once();
+});

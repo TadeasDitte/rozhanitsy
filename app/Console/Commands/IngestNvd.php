@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Concerns\LogsCommandOutput;
 use App\Models\Source;
 use App\Models\SyncState;
 use App\Services\Ingestion\IngestRecordWriter;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Http;
 #[Description('Pull CVEs from NVD API 2.0 into ingest_records')]
 class IngestNvd extends Command
 {
+    use LogsCommandOutput;
+
     private const PAGE_SIZE = 2000;
 
     private const MAX_DATE_RANGE_DAYS = 120;
@@ -36,7 +39,8 @@ class IngestNvd extends Command
         $apiKey = config('services.nvd.api_key');
 
         [$start, $end] = $this->resolveWindow($syncState, (bool) $this->option('full'));
-        $this->info("Syncing NVD {$start} → {$end}");
+        $this->logInfo("Syncing NVD {$start} → {$end}", ['window_start' => $start, 'window_end' => $end, 'has_api_key' => (bool) $apiKey]);
+        $startedAt = now();
 
         $startIndex = 0;
         $total = null;
@@ -55,7 +59,7 @@ class IngestNvd extends Command
                 ]);
 
             if ($response->status() === 429) {
-                $this->warn('Rate limited — backing off 30s');
+                $this->logWarning('Rate limited — backing off 30s', ['start_index' => $startIndex]);
                 sleep(30);
 
                 continue;
@@ -87,7 +91,8 @@ class IngestNvd extends Command
             'last_synced_at' => now(),
         ]);
 
-        $this->info("Done, {$processed} records written.");
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+        $this->logInfo("Done, {$processed} records written in {$durationSeconds}s.", ['records' => $processed, 'total_results' => $total, 'duration_seconds' => $durationSeconds]);
 
         return self::SUCCESS;
     }

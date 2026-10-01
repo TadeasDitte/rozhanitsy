@@ -22,7 +22,7 @@ test('--workers downloads every modified record since the cursor, skipping missi
     ]);
 
     $this->artisan('ingest:osv-sync', ['--workers' => 2])
-        ->expectsOutputToContain('Done, 2 records updated, 1 skipped (not found).')
+        ->expectsOutputToContain('Done, 2 records updated, 1 skipped (not found)')
         ->assertSuccessful();
 
     expect(IngestRecord::where('source_id', $source->id)->orderBy('external_id')->pluck('external_id')->all())

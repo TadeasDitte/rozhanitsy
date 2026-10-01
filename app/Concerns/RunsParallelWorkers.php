@@ -17,6 +17,8 @@ use InvalidArgumentException;
  */
 trait RunsParallelWorkers
 {
+    use LogsCommandOutput;
+
     private const WORKER_PROGRESS_TICK = "\x06";
 
     protected function workerCount(): int
@@ -85,8 +87,15 @@ trait RunsParallelWorkers
             }
 
             $allSucceeded = false;
-            $this->error("{$name} exited with code {$result->exitCode()}");
-            $this->line(trim($result->errorOutput()."\n".str_replace(self::WORKER_PROGRESS_TICK, '', $result->output())));
+            $output = trim($result->errorOutput()."\n".str_replace(self::WORKER_PROGRESS_TICK, '', $result->output()));
+
+            $this->logError("{$name} exited with code {$result->exitCode()}", [
+                'worker_command' => $command,
+                'arguments' => $arguments,
+                'exit_code' => $result->exitCode(),
+                'output' => $output,
+            ]);
+            $this->line($output);
         }
 
         return $allSucceeded;
