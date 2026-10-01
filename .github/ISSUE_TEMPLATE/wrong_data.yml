@@ -1,0 +1,129 @@
+name: Wrong data (false positive / false negative)
+description: Rozhanitsy reported a vulnerability that doesn't apply, missed one that does, or returned wrong details.
+title: "[Data] "
+labels: ["wrong data"]
+assignees: ["TadeasDitte"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping keep the data accurate!
+        Before submitting, please check:
+        - Product and vendor names are matched **exactly**, use `GET /api/v1/products?q=...` to find the right spelling. A wrong name is the most common cause of missing results.
+        - Low confidence matches (NVD CPE version `*` with no bounds) are hidden unless you pass `include_low_confidence=1`. See [Confidence](https://github.com/TadeasDitte/rozhanitsy/wiki/API#confidence).
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of problem is it?
+      options:
+        - False positive - reported as vulnerable, but the version is not affected
+        - False negative - a known vulnerability affecting this version is missing
+        - Wrong details - wrong fixed_in / recommended_version / severity / CVSS / aliases / description
+        - Duplicate or unlinked records - the same issue shows up separately without aliases
+    validations:
+      required: true
+
+  - type: input
+    id: vulnerability_id
+    attributes:
+      label: Vulnerability ID(s)
+      description: CVE, GHSA or OSV IDs involved.
+      placeholder: CVE-2026-1000, GHSA-aaaa-bbbb-cccc
+    validations:
+      required: true
+
+  - type: textarea
+    id: query
+    attributes:
+      label: Package / query
+      description: What did you check? Paste the exact request URL (or batch body) if you used the API.
+      placeholder: |
+        GET /api/v1/check?product=wordpress&vendor=wordpress&version=6.9.2
+
+        - Product: wordpress
+        - Vendor: wordpress
+        - Ecosystem: (none)
+        - Version: 6.9.2
+        - include_low_confidence: 0
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What Rozhanitsy returned
+      description: The relevant part of the response, e.g. the vulnerability entry including `confidence` and `affected_range`. For a false negative, the response without the missing entry.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should return
+      description: Ex. "6.9.2 is not affected, the fix landed in 6.9.1" or "CVE-2026-1000 should be listed, affected range is < 6.9.5".
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Links that back this up, vendor advisory, changelog, fix commit, NVD / OSV page, distro tracker...
+      placeholder: |
+        - https://nvd.nist.gov/vuln/detail/CVE-2026-1000
+        - https://osv.dev/vulnerability/GHSA-aaaa-bbbb-cccc
+        - https://github.com/vendor/project/commit/...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Is the upstream source correct?
+      description: Compare with the NVD / OSV record itself. If upstream is wrong too, it should also be reported there, we can only fix how we read the data.
+      options:
+        - Upstream (NVD / OSV) is correct, Rozhanitsy got it wrong
+        - Upstream is wrong too
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: suspected_cause
+    attributes:
+      label: Suspected cause
+      description: Optional, if you have an idea.
+      options:
+        - Version comparison (e.g. pre-releases, debian `~`, rpm, maven qualifiers, letter suffixes)
+        - Version range parsed wrong (start / end bounds, inclusive / exclusive)
+        - Product / vendor / ecosystem naming
+        - NVD platform configuration (`AND` / running on / plugs_into)
+        - Withdrawn or rejected record still shown / valid record hidden
+        - Data not ingested yet / outdated
+        - No idea
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Rozhanitsy version / instance
+      description: Release tag, image tag or commit SHA, and when the data was last ingested if you self-host.
+      placeholder: v2.1.0, last ingest:nvd + ingest:osv-sync 2026-10-01
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this hasn't been reported yet.
+          required: true
+        - label: I confirmed the product / vendor / ecosystem spelling with the products endpoint.
+          required: true

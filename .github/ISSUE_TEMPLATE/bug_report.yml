@@ -1,0 +1,107 @@
+name: Bug report
+description: Something is broken, crashes or behaves unexpectedly.
+title: "[Bug] "
+labels: ["bug"]
+assignees: ["TadeasDitte"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+        If the problem is that Rozhanitsy returned **wrong vulnerability data** (missing CVE, CVE that doesn't apply, wrong fixed version...), use the **Wrong data** template instead.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where does the bug happen?
+      options:
+        - API
+        - Web UI
+        - CLI - ingest (ingest:nvd, ingest:osv, ingest:osv-sync)
+        - CLI - parse (parse:l1, parse:l2, parse:fast)
+        - Deployment / Docker
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, API requests or clicks that trigger the bug.
+      placeholder: |
+        1. Run `php artisan ingest:osv-sync --workers=4`
+        2. ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Relevant output from `storage/logs/laravel.log`, the container logs, the browser console or the command output. Remove any secrets.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Rozhanitsy version
+      description: Release tag, image tag or commit SHA.
+      placeholder: v2.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Docker Compose (ghcr.io image)
+        - Docker Compose (self-built image)
+        - Bare metal / manual
+        - Local development
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Host OS, Postgres version, browser (for UI bugs), anything else that might matter.
+      placeholder: |
+        - Host OS: AlmaLinux 10
+        - Postgres: 18
+        - Browser: Firefox 140
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Screenshots, links or anything else that helps.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this hasn't been reported yet.
+          required: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability in Rozhanitsy
+    url: https://github.com/TadeasDitte/rozhanitsy/security/advisories/new
+    about: Please do not open a public issue for security problems, report them privately instead.
+  - name: Documentation
+    url: https://github.com/TadeasDitte/rozhanitsy/wiki
+    about: API, CLI and data ingest docs.
