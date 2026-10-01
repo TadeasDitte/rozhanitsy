@@ -32,3 +32,7 @@ updates:
       npm:
         patterns:
           - "*"
+    ignore:
+      # TypeScript 7 (native Go port) has no JS compiler API, which @vue/compiler-sfc needs to resolve imported prop types.
+      - dependency-name: "typescript"
+        versions: [">=7"]
