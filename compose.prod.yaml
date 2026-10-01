@@ -4,7 +4,7 @@ services:
     app:
         image: 'ghcr.io/tadeasditte/rozhanitsy:${ROZHANITSY_TAG:-latest}'
         restart: unless-stopped
-        env_file: .env.production
+        env_file: .env
         environment:
             RUN_MIGRATIONS: 'true'
         ports:
@@ -24,7 +24,7 @@ services:
     scheduler:
         image: 'ghcr.io/tadeasditte/rozhanitsy:${ROZHANITSY_TAG:-latest}'
         restart: unless-stopped
-        env_file: .env.production
+        env_file: .env
         command: ['php', 'artisan', 'schedule:work']
         volumes:
             - 'storage:/app/storage/app'
@@ -44,7 +44,7 @@ services:
         volumes:
             - 'db:/var/lib/postgresql'
         healthcheck:
-            test: ['CMD', 'pg_isready', '-q', '-d', '${DB_DATABASE}', '-U', '${DB_USERNAME}']
+            test: ['CMD-SHELL', 'pg_isready -q -d "$$POSTGRES_DB" -U "$$POSTGRES_USER"']
             interval: 5s
             timeout: 5s
             retries: 10
