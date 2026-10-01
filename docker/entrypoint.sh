@@ -5,4 +5,8 @@ set -e
 # image stays environment-agnostic.
 php artisan optimize --no-interaction
 
+if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
+    php artisan migrate --force --no-interaction
+fi
+
 exec "$@"
