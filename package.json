@@ -16,7 +16,7 @@
         "@laravel/vite-plugin-wayfinder": "^0.1.10",
         "@stylistic/eslint-plugin": "^5.10.0",
         "@tailwindcss/vite": "^4.3.3",
-        "@types/node": "^26.6.2",
+        "@types/node": "^26.6.3",
         "@vitejs/plugin-vue": "^6.0.9",
         "@vue/eslint-config-typescript": "^14.9.0",
         "concurrently": "^10.0.5",
@@ -27,7 +27,7 @@
         "eslint-plugin-vue": "^10.11.1",
         "prettier": "^3.9.9",
         "prettier-plugin-tailwindcss": "^0.8.1",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "typescript-eslint": "^8.70.1",
         "vite": "^8.3.1",
         "vue-tsc": "^3.3.11"
