@@ -17,7 +17,6 @@ use InvalidArgumentException;
  */
 trait RunsParallelWorkers
 {
-
     private const WORKER_PROGRESS_TICK = "\x06";
 
     protected function workerCount(): int
