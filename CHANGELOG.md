@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.3.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.2.0...v2.3.0) (2026-10-01)
+
+
+### Features
+
+* better docker compose for prod ([98a45f9](https://github.com/TadeasDitte/rozhanitsy/commit/98a45f9650b542b6e635f0920890105c73e6a66a))
+* changed default db name and user ([6c1c98c](https://github.com/TadeasDitte/rozhanitsy/commit/6c1c98ca1c0b3d9e6309b07267867a87d6aa044e))
+* update environment configuration for production setup ([465c804](https://github.com/TadeasDitte/rozhanitsy/commit/465c8042b4af9572c0a85810b72220ada3ba8951))
+
+
+### Bug Fixes
+
+* add missing tag configuration for default branch in Docker publish workflow ([8c3f1ec](https://github.com/TadeasDitte/rozhanitsy/commit/8c3f1ecb6526fdad8145a1305ed36b4df71f325e))
+
 ## [2.2.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.1.0...v2.2.0) (2026-10-01)
 
 
