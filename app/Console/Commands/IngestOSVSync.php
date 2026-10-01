@@ -18,7 +18,6 @@ use Throwable;
 #[Description('Incrementally sync OSV vulnerabilities via modified_id.csv, without re-downloading all.zip')]
 class IngestOsvSync extends Command
 {
-
     private const BATCH_SIZE_PER_WORKER = 10;
 
     private int $processed = 0;

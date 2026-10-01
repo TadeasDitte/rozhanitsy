@@ -14,6 +14,7 @@ class IngestRecordWriter
 
         if ($existing && $this->unchanged($existing->raw_payload, $payload)) {
             $existing->touch('fetched_at');
+
             return $existing;
         }
 
@@ -39,11 +40,14 @@ class IngestRecordWriter
             if (is_array($arr)) {
                 ksort($arr);
                 foreach ($arr as &$v) {
-                    if (is_array($v)) $sort($v);
+                    if (is_array($v)) {
+                        $sort($v);
+                    }
                 }
             }
         };
         $sort($data);
+
         return json_encode($data);
     }
 }

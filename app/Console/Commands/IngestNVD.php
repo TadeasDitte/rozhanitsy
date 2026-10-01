@@ -16,9 +16,11 @@ use Illuminate\Support\Facades\Http;
 class IngestNvd extends Command
 {
     private const PAGE_SIZE = 2000;
+
     private const MAX_DATE_RANGE_DAYS = 120;
 
     private const RATE_LIMIT_DELAY_WITH_KEY = 0.6;
+
     private const RATE_LIMIT_DELAY_NO_KEY = 6.0;
 
     public function __construct(private IngestRecordWriter $writer)
@@ -55,6 +57,7 @@ class IngestNvd extends Command
             if ($response->status() === 429) {
                 $this->warn('Rate limited — backing off 30s');
                 sleep(30);
+
                 continue;
             }
             $response->throw();
@@ -85,6 +88,7 @@ class IngestNvd extends Command
         ]);
 
         $this->info("Done, {$processed} records written.");
+
         return self::SUCCESS;
     }
 
@@ -102,7 +106,7 @@ class IngestNvd extends Command
         $end = Carbon::now('UTC');
         $lastCursor = $syncState->cursor['last_mod_end_date'] ?? null;
 
-        if ($full || !$lastCursor) {
+        if ($full || ! $lastCursor) {
             $start = $end->copy()->subDays(self::MAX_DATE_RANGE_DAYS);
         } else {
             $start = Carbon::parse($lastCursor);

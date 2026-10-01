@@ -3,8 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\Source;
-
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class SourcesSeeder extends Seeder

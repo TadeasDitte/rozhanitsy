@@ -43,7 +43,7 @@ class IngestOsv extends Command
             ->throw();
 
         $extractPath = storage_path("app/tmp/osv-{$slug}");
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $zip->open($zipPath);
         $zip->extractTo($extractPath);
         $zip->close();
@@ -76,6 +76,7 @@ class IngestOsv extends Command
         );
 
         $this->info("Done, {$written} records written.");
+
         return self::SUCCESS;
     }
 }
