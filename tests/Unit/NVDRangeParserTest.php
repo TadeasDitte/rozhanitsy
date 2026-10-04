@@ -295,6 +295,25 @@ test('replaces a lossy CPE range with the CNA ranges of the same product', funct
     expect($ranges[0]->raw)->toStartWith('cna:');
 });
 
+test('emits each CNA range once however many CPE ranges the product has', function () {
+    $matches = array_map(fn (int $minor): array => [
+        'criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*',
+        'vulnerable' => true,
+        'versionStartIncluding' => "5.{$minor}.0",
+        'versionEndExcluding' => "5.{$minor}.9",
+    ], range(1, 50));
+
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig($matches),
+        ['cna' => [
+            cnaPerlEntry([['version' => '0', 'lessThan' => '5.40.5', 'status' => 'affected']]),
+            cnaPerlEntry([['version' => '5.41.0', 'lessThan' => '5.42.3', 'status' => 'affected']], ['packageName' => null, 'product' => 'perl']),
+        ]],
+    ]);
+
+    expect($ranges)->toHaveCount(2);
+});
+
 test('keeps the platform of the CPE range it replaces', function () {
     $ranges = (new NVDRangeParser)->parse([
         ...nvdAndConfig([

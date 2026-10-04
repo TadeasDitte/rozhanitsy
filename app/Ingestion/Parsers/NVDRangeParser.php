@@ -15,7 +15,7 @@ final class NVDRangeParser implements RangeParser
 
         foreach ($rawRanges as $configuration) {
             if (array_key_exists('cna', $configuration)) {
-                $cnaEntries = [...$cnaEntries, ...(array) $configuration['cna']];
+                array_push($cnaEntries, ...(array) $configuration['cna']);
 
                 continue;
             }
@@ -55,6 +55,19 @@ final class NVDRangeParser implements RangeParser
      */
     private function preferCna(array $ranges, array $cnaEntries): array
     {
+        if ($cnaEntries === []) {
+            return $ranges;
+        }
+
+        /** @var array<string, VersionRangeData> $templates the first replaceable CPE range of each vendor / product */
+        $templates = [];
+
+        foreach ($ranges as $range) {
+            if ($range->product !== null && $range->versionScope !== 'na') {
+                $templates[$range->vendor.'|'.$range->product] ??= $range;
+            }
+        }
+
         /** @var array<string, array{template: VersionRangeData, bounds: list<array<string, ?string>>}> $replacements */
         $replacements = [];
 
@@ -65,14 +78,13 @@ final class NVDRangeParser implements RangeParser
                 continue;
             }
 
-            foreach ($ranges as $range) {
-                if ($range->product === null || $range->versionScope === 'na' || ! $cna->isAbout($range->vendor, $range->product)) {
+            foreach ($templates as $key => $template) {
+                if (! $cna->isAbout($template->vendor, (string) $template->product)) {
                     continue;
                 }
 
-                $key = $range->vendor.'|'.$range->product;
-                $replacements[$key] ??= ['template' => $range, 'bounds' => []];
-                $replacements[$key]['bounds'] = [...$replacements[$key]['bounds'], ...$cna->ranges];
+                $replacements[$key] ??= ['template' => $template, 'bounds' => []];
+                array_push($replacements[$key]['bounds'], ...$cna->ranges);
             }
         }
 
