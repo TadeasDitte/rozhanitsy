@@ -308,3 +308,17 @@ test('inserts the ranges of a large record in batches that fit the bound paramet
     expect($record->versionRanges()->count())->toBe(5000);
     expect(max($boundParameters))->toBeLessThanOrEqual(65535);
 });
+
+test('stamps every resolved range with the same creation time', function () {
+    $this->freezeTime();
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => l2NvdConfigurations()]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    $ranges = $record->versionRanges;
+    expect($ranges)->toHaveCount(2);
+    $ranges->each(fn (VersionRange $range) => expect($range->created_at->toDateTimeString())->toBe(now()->toDateTimeString())
+        ->and($range->updated_at->toDateTimeString())->toBe(now()->toDateTimeString()));
+});
