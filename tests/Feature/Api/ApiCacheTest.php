@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\VersionRange;
+use Illuminate\Support\Facades\Cache;
 
 test('serves a repeated check from cache until a parse run changes the data', function () {
     $range = VersionRange::factory()->create([
@@ -37,4 +38,18 @@ test('serves a repeated product search from cache until a parse run changes the 
     $this->artisan('parse:fast')->assertSuccessful();
 
     $this->getJson(route('api.v1.products.index', ['q' => 'openssl']))->assertJsonCount(0, 'data');
+});
+
+test('serves the affected range as plain JSON from a serializing cache store', function () {
+    config(['cache.stores.array.serialize' => true]);
+    Cache::forgetDriver('array');
+    VersionRange::factory()->create([
+        'product' => 'lodash', 'version_incl_start' => null, 'version_excl_end' => '4.17.21',
+    ]);
+    $url = route('api.v1.check', ['product' => 'lodash', 'version' => '4.17.20']);
+
+    $this->getJson($url)->assertJsonPath('data.vulnerabilities.0.affected_range.version_excl_end', '4.17.21');
+    $this->getJson($url)
+        ->assertJsonPath('data.vulnerabilities.0.affected_range.version_excl_end', '4.17.21')
+        ->assertJsonMissingPath('data.vulnerabilities.0.affected_range.__PHP_Incomplete_Class_Name');
 });
