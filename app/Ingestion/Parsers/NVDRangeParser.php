@@ -2,6 +2,7 @@
 
 namespace App\Ingestion\Parsers;
 
+use App\Ingestion\Support\CnaAffected;
 use App\Ingestion\Support\Cpe23;
 use App\Ingestion\VersionRangeData;
 
@@ -10,8 +11,15 @@ final class NVDRangeParser implements RangeParser
     public function parse(array $rawRanges): array
     {
         $ranges = [];
+        $cnaEntries = [];
 
         foreach ($rawRanges as $configuration) {
+            if (array_key_exists('cna', $configuration)) {
+                $cnaEntries = [...$cnaEntries, ...(array) $configuration['cna']];
+
+                continue;
+            }
+
             $nodes = $configuration['nodes'] ?? [];
             $platformNodes = $this->platformNodes($configuration);
             $configurationPlugsInto = $this->firstProduct($platformNodes);
@@ -33,7 +41,69 @@ final class NVDRangeParser implements RangeParser
             }
         }
 
-        return $ranges;
+        return $this->preferCna($ranges, $cnaEntries);
+    }
+
+    /**
+     * A CPE match holds one contiguous range, so a fix shipped on several release
+     * branches is lossy there. Where the CNA's own `affected` entry is a plain
+     * list of ranges for the same product, those replace the CPE ranges.
+     *
+     * @param  list<VersionRangeData>  $ranges
+     * @param  array<int, mixed>  $cnaEntries
+     * @return list<VersionRangeData>
+     */
+    private function preferCna(array $ranges, array $cnaEntries): array
+    {
+        /** @var array<string, array{template: VersionRangeData, bounds: list<array<string, ?string>>}> $replacements */
+        $replacements = [];
+
+        foreach ($cnaEntries as $entry) {
+            $cna = is_array($entry) ? CnaAffected::parse($entry) : null;
+
+            if ($cna === null) {
+                continue;
+            }
+
+            foreach ($ranges as $range) {
+                if ($range->product === null || $range->versionScope === 'na' || ! $cna->isAbout($range->vendor, $range->product)) {
+                    continue;
+                }
+
+                $key = $range->vendor.'|'.$range->product;
+                $replacements[$key] ??= ['template' => $range, 'bounds' => []];
+                $replacements[$key]['bounds'] = [...$replacements[$key]['bounds'], ...$cna->ranges];
+            }
+        }
+
+        if ($replacements === []) {
+            return $ranges;
+        }
+
+        $kept = array_values(array_filter(
+            $ranges,
+            fn (VersionRangeData $range): bool => $range->versionScope === 'na' || ! isset($replacements[$range->vendor.'|'.$range->product]),
+        ));
+
+        foreach ($replacements as $replacement) {
+            foreach ($replacement['bounds'] as $bounds) {
+                $kept[] = new VersionRangeData(
+                    type: $replacement['template']->type,
+                    ecosystem: null,
+                    packageManager: null,
+                    vendor: $replacement['template']->vendor,
+                    product: $replacement['template']->product,
+                    versionInclStart: $bounds['startIncl'],
+                    versionExclStart: $bounds['startExcl'],
+                    versionInclEnd: $bounds['endIncl'],
+                    versionExclEnd: $bounds['endExcl'],
+                    plugsInto: $replacement['template']->plugsInto,
+                    raw: 'cna:'.$bounds['raw'],
+                );
+            }
+        }
+
+        return $kept;
     }
 
     /**

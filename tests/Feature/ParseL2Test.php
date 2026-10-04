@@ -245,3 +245,40 @@ test('--partition only resolves records within its id range', function () {
     expect($records->map(fn (ParsedRecord $record) => $record->refresh()->resolved_at !== null)->all())
         ->toBe([true, true, false, false]);
 });
+
+test('checks a multi-branch fix against the CNA ranges instead of the lossy CPE range', function (string $version, bool $vulnerable, ?string $fixedIn) {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [
+        ['nodes' => [['cpeMatch' => [[
+            'criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*',
+            'vulnerable' => true,
+            'versionEndIncluding' => '5.43.10',
+        ]]]]],
+        ['cna' => [[
+            'defaultStatus' => 'unaffected',
+            'packageName' => 'perl',
+            'versions' => [
+                ['version' => '0', 'lessThan' => '5.40.5-RC1', 'versionType' => 'custom', 'status' => 'affected'],
+                ['version' => '5.41.0', 'lessThan' => '5.42.3-RC1', 'versionType' => 'custom', 'status' => 'affected'],
+                ['version' => '5.43.0', 'lessThan' => '5.43.11', 'versionType' => 'custom', 'status' => 'affected'],
+            ],
+        ]]],
+    ]]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    $response = $this->getJson(route('api.v1.check', ['vendor' => 'perl', 'product' => 'perl', 'version' => $version]))
+        ->assertJsonPath('data.vulnerable', $vulnerable);
+
+    if ($fixedIn !== null) {
+        $response->assertJsonPath('data.vulnerabilities.0.fixed_in', $fixedIn);
+    }
+})->with([
+    'fixed on the 5.42 branch' => ['5.42.3', false, null],
+    'fixed on the 5.40 branch' => ['5.40.5', false, null],
+    'fixed on the 5.43 branch' => ['5.43.11', false, null],
+    'before the 5.42 fix' => ['5.42.2', true, '5.42.3-RC1'],
+    'old release' => ['5.30.0', true, '5.40.5-RC1'],
+    'development release' => ['5.43.4', true, '5.43.11'],
+]);

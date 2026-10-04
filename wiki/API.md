@@ -79,6 +79,8 @@ When a record has both a `range` and an `any` range matching, the `range` one wi
 
 NVD configurations with a top-level `AND` ("vulnerable X running on / with Y") don't produce ranges for the platform node. The platform goes into `plugs_into` instead. A platform node is one with no vulnerable matches, or, in older NVD data that marks both sides vulnerable, one with no version info while another node has some.
 
+NVD also returns the CNA's own `affected` version data (the vendor's or advisory database's view). A CPE match is one contiguous range, so a fix shipped on several release branches ("before 5.40.5, from 5.41.0 before 5.42.3") comes out too broad. When the CNA lists plain ranges for the same product as a CPE match, those ranges replace that product's CPE ranges and `raw` starts with `cna:`. Entries that are placeholders (`n/a`), say everything is affected by default, or name another product leave the CPE ranges alone. After upgrading, re-parse NVD (`parse:l1 nvd --rerun`, then `parse:l2 nvd`) to apply this to stored records.
+
 ### What a check searches
 
 | You pass | Searched | `version` is |

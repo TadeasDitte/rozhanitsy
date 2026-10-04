@@ -31,8 +31,29 @@ final class NVDRecordParser implements SourceRecordParser
             references: $this->extractReferences($cve['references'] ?? []),
             status: $cve['vulnStatus'] ?? null,
             knownExploited: isset($cve['cisaExploitAdd']),
-            rawRanges: $cve['configurations'] ?? [],
+            rawRanges: $this->extractRawRanges($cve),
         );
+    }
+
+    /**
+     * The CPE configurations, followed by one `cna` element holding the CNA's own
+     * affected entries when the record has any.
+     *
+     * @param  array<string, mixed>  $cve
+     * @return array<int, array<string, mixed>>
+     */
+    private function extractRawRanges(array $cve): array
+    {
+        $rawRanges = $cve['configurations'] ?? [];
+        $entries = [];
+
+        foreach ($cve['affected'] ?? [] as $affected) {
+            foreach ($affected['affectedData'] ?? [] as $entry) {
+                $entries[] = $entry;
+            }
+        }
+
+        return $entries === [] ? $rawRanges : [...$rawRanges, ['cna' => $entries]];
     }
 
     /**

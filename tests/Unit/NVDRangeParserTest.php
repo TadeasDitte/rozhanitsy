@@ -248,3 +248,119 @@ test('emits every node of an AND configuration when none of them are versioned',
         ['wordpress', 'na'],
     ]);
 });
+
+/**
+ * @param  list<array<string, mixed>>  $versions
+ * @param  array<string, mixed>  $entry
+ * @return array<string, mixed>
+ */
+function cnaPerlEntry(array $versions, array $entry = []): array
+{
+    return [...['defaultStatus' => 'unaffected', 'packageName' => 'perl'], ...$entry, 'versions' => $versions];
+}
+
+/**
+ * @param  list<array<string, mixed>>  $entries
+ * @return list<array<string, mixed>>
+ */
+function perlConfigWithCna(array $entries): array
+{
+    return [
+        ...nvdConfig([[
+            'criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*',
+            'vulnerable' => true,
+            'versionEndIncluding' => '5.43.10',
+        ]]),
+        ['cna' => $entries],
+    ];
+}
+
+test('replaces a lossy CPE range with the CNA ranges of the same product', function () {
+    $ranges = (new NVDRangeParser)->parse(perlConfigWithCna([cnaPerlEntry([
+        ['version' => '0', 'lessThan' => '5.40.5-RC1', 'versionType' => 'custom', 'status' => 'affected'],
+        ['version' => '5.41.0', 'lessThan' => '5.42.3-RC1', 'versionType' => 'custom', 'status' => 'affected'],
+        ['version' => '5.43.0', 'lessThan' => '5.43.11', 'versionType' => 'custom', 'status' => 'affected'],
+    ])]));
+
+    $bounds = array_map(fn ($range): array => [$range->versionInclStart, $range->versionExclEnd, $range->versionInclEnd], $ranges);
+
+    expect($bounds)->toBe([
+        [null, '5.40.5-RC1', null],
+        ['5.41.0', '5.42.3-RC1', null],
+        ['5.43.0', '5.43.11', null],
+    ]);
+    expect($ranges[0]->vendor)->toBe('perl');
+    expect($ranges[0]->product)->toBe('perl');
+    expect($ranges[0]->versionScope)->toBe('range');
+    expect($ranges[0]->raw)->toStartWith('cna:');
+});
+
+test('keeps the platform of the CPE range it replaces', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdAndConfig([
+            [['criteria' => 'cpe:2.3:a:perl:module:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '2.0']],
+            [['criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*', 'vulnerable' => false]],
+        ]),
+        ['cna' => [cnaPerlEntry([['version' => '1.0', 'lessThan' => '1.5', 'status' => 'affected']], ['packageName' => 'module'])]],
+    ]);
+
+    expect($ranges)->toHaveCount(1);
+    expect($ranges[0]->versionInclStart)->toBe('1.0');
+    expect($ranges[0]->plugsInto)->toBe('perl');
+});
+
+test('upgrades a versionless CPE range when the CNA names versions', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([['criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*', 'vulnerable' => true]]),
+        ['cna' => [cnaPerlEntry([['version' => '5.0', 'lessThan' => '5.2', 'status' => 'affected']])]],
+    ]);
+
+    expect($ranges)->toHaveCount(1);
+    expect($ranges[0]->versionScope)->toBe('range');
+    expect($ranges[0]->versionExclEnd)->toBe('5.2');
+});
+
+test('combines the CNA ranges of several entries for one product', function () {
+    $ranges = (new NVDRangeParser)->parse(perlConfigWithCna([
+        cnaPerlEntry([['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']]),
+        cnaPerlEntry([['version' => '2.0', 'lessThan' => '2.5', 'status' => 'affected']], ['packageName' => null, 'product' => 'perl']),
+    ]));
+
+    expect($ranges)->toHaveCount(2);
+});
+
+test('only replaces the CPE ranges of the product the CNA describes', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([
+            ['criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '5.43.10'],
+            ['criteria' => 'cpe:2.3:a:other:tool:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '3.0'],
+        ]),
+        ['cna' => [cnaPerlEntry([['version' => '0', 'lessThan' => '5.40.5', 'status' => 'affected']])]],
+    ]);
+
+    expect(array_map(fn ($range): ?string => $range->product.' '.($range->versionExclEnd ?? $range->versionInclEnd), $ranges))
+        ->toBe(['tool 3.0', 'perl 5.40.5']);
+});
+
+test('keeps the CPE ranges when the CNA data cannot replace them', function (array $cna) {
+    $ranges = (new NVDRangeParser)->parse(perlConfigWithCna($cna));
+
+    expect($ranges)->toHaveCount(1);
+    expect($ranges[0]->versionInclEnd)->toBe('5.43.10');
+    expect($ranges[0]->raw)->toStartWith('cpe:');
+})->with([
+    'placeholder versions' => [[cnaPerlEntry([['version' => 'n/a', 'status' => 'affected']])]],
+    'affected by default' => [[cnaPerlEntry([['version' => '6.0', 'status' => 'unaffected']], ['defaultStatus' => 'affected'])]],
+    'another product' => [[cnaPerlEntry([['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']], ['packageName' => 'python'])]],
+    'no entries' => [[]],
+]);
+
+test('never replaces a range that does not apply to any version', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([['criteria' => 'cpe:2.3:a:perl:perl:-:*:*:*:*:*:*:*', 'vulnerable' => true]]),
+        ['cna' => [cnaPerlEntry([['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']])]],
+    ]);
+
+    expect($ranges)->toHaveCount(1);
+    expect($ranges[0]->versionScope)->toBe('na');
+});
