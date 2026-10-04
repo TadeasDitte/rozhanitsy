@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.4.0...v2.5.0) (2026-10-04)
+
+
+### Features
+
+* enhance NVD range parsing with CNA affected entries and version handling ([f317092](https://github.com/TadeasDitte/rozhanitsy/commit/f3170925150aa4ba696094be1d35d5e75cb0eab8))
+* enhance vulnerability checks with ambiguous product handling and ecosystem configurations ([f879a86](https://github.com/TadeasDitte/rozhanitsy/commit/f879a86f841e75c82afe716ff226d71b76f3820b))
+* implement ecosystem-specific version comparison and add versioning schemes for Debian, RPM, and APK ([7c39398](https://github.com/TadeasDitte/rozhanitsy/commit/7c393980419be6a7630437be5cda359aec1cd8e7))
+
 ## [2.4.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.3.0...v2.4.0) (2026-10-01)
 
 
