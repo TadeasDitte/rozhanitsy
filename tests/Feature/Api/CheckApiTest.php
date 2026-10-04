@@ -172,3 +172,142 @@ test('applies the low confidence flag to a whole batch', function () {
         'packages' => [['product' => 'wordpress', 'version' => '6.9']],
     ])->assertJsonPath('data.0.vulnerable', true);
 });
+
+test('skips language runtime ranges unless a vendor names them', function () {
+    VersionRange::factory()->create([
+        'vendor' => 'ruby-lang', 'product' => 'zlib', 'plugs_into' => 'ruby',
+        'version_incl_start' => null, 'version_excl_end' => '3.0.1',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'zlib', 'version' => '1.3.2']))
+        ->assertJsonPath('data.vulnerable', false);
+    $this->getJson(route('api.v1.check', ['vendor' => 'ruby-lang', 'product' => 'zlib', 'version' => '1.3.2']))
+        ->assertJsonPath('data.vulnerability_count', 1);
+});
+
+test('keeps platform bound ranges that are not language runtimes', function () {
+    VersionRange::factory()->create([
+        'vendor' => 'automattic', 'product' => 'jetpack', 'plugs_into' => 'wordpress',
+        'version_incl_start' => null, 'version_excl_end' => '12.0',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'jetpack', 'version' => '11.0']))
+        ->assertJsonPath('data.vulnerable', true);
+});
+
+test('asks for a vendor or ecosystem when matches span several vendors', function () {
+    foreach (['apache', 'other_vendor'] as $vendor) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'orc', 'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+    $query = ['product' => 'orc', 'version' => '1.0'];
+
+    $this->getJson(route('api.v1.check', $query))
+        ->assertOk()
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.vulnerable', null)
+        ->assertJsonPath('data.vulnerability_count', 0)
+        ->assertJsonPath('data.recommended_version', null)
+        ->assertJsonPath('data.candidates', [
+            ['vendor' => 'apache', 'ecosystem' => null],
+            ['vendor' => 'other_vendor', 'ecosystem' => null],
+        ]);
+    $this->getJson(route('api.v1.check', [...$query, 'vendor' => 'apache']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 1);
+});
+
+test('treats the same package in NVD and OSV as one product', function () {
+    VersionRange::factory()->create([
+        'vendor' => 'lodash', 'ecosystem' => null, 'product' => 'lodash', 'version_incl_start' => null, 'version_excl_end' => '4.17.21',
+    ]);
+    VersionRange::factory()->create([
+        'vendor' => null, 'ecosystem' => 'npm', 'product' => 'lodash', 'version_incl_start' => null, 'version_excl_end' => '4.17.21',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'lodash', 'version' => '4.17.20']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 2);
+});
+
+test('flags only the ambiguous package in a batch', function () {
+    foreach (['apache', 'other_vendor'] as $vendor) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'orc', 'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->postJson(route('api.v1.check.batch'), ['packages' => [
+        ['product' => 'orc', 'version' => '1.0'],
+        ['product' => 'zlib', 'version' => '1.3.2'],
+    ]])
+        ->assertOk()
+        ->assertJsonPath('data.0.ambiguous', true)
+        ->assertJsonPath('data.1.ambiguous', false)
+        ->assertJsonPath('data.1.vulnerable', false);
+});
+
+test('takes the skipped language runtimes from config', function () {
+    config(['matching.language_runtimes' => ['wordpress']]);
+    foreach ([['ruby-lang', 'ruby'], ['automattic', 'wordpress']] as [$vendor, $platform]) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'widget', 'plugs_into' => $platform,
+            'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'widget', 'version' => '1.0']))
+        ->assertJsonPath('data.vulnerability_count', 1)
+        ->assertJsonPath('data.vulnerabilities.0.affected_range.vendor', 'ruby-lang');
+});
+
+test('searches only NVD and language ecosystems unless an ecosystem is given', function () {
+    $ranges = [
+        ['vendor' => 'openssl', 'ecosystem' => null],
+        ['vendor' => null, 'ecosystem' => 'npm'],
+        ['vendor' => 'debian', 'ecosystem' => 'Debian:12'],
+    ];
+    foreach ($ranges as $range) {
+        VersionRange::factory()->create([
+            ...$range, 'product' => 'openssl', 'version_incl_start' => null, 'version_excl_end' => '4.0',
+        ]);
+    }
+    $query = ['product' => 'openssl', 'version' => '3.0.7'];
+
+    $this->getJson(route('api.v1.check', $query))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 2);
+    $this->getJson(route('api.v1.check', [...$query, 'ecosystem' => 'Debian:12']))
+        ->assertJsonPath('data.vulnerability_count', 1)
+        ->assertJsonPath('data.vulnerabilities.0.affected_range.vendor', 'debian');
+});
+
+test('ignores distro vendors and ecosystems when judging ambiguity', function () {
+    foreach (['Debian:12', 'Ubuntu:24.04:LTS', 'Alpine:v3.17'] as $ecosystem) {
+        VersionRange::factory()->create([
+            'vendor' => strtolower(strtok($ecosystem, ':')), 'ecosystem' => $ecosystem, 'product' => 'zlib',
+            'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'zlib', 'version' => '1.3.2']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerable', false);
+});
+
+test('asks for an ecosystem when a name exists in several language ecosystems', function () {
+    foreach (['npm', 'PyPI'] as $ecosystem) {
+        VersionRange::factory()->create([
+            'vendor' => null, 'ecosystem' => $ecosystem, 'product' => 'requests',
+            'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'requests', 'version' => '1.0']))
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.candidates', [
+            ['vendor' => null, 'ecosystem' => 'PyPI'],
+            ['vendor' => null, 'ecosystem' => 'npm'],
+        ]);
+});

@@ -64,12 +64,30 @@ class CheckController extends Controller
     private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, bool $includeLowConfidence): array
     {
         $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $includeLowConfidence);
+        $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
+
+        if ($candidates !== []) {
+            return [
+                'vendor' => $vendor,
+                'product' => $product,
+                'ecosystem' => $ecosystem,
+                'version' => $version,
+                'ambiguous' => true,
+                'candidates' => $candidates,
+                'vulnerable' => null,
+                'vulnerability_count' => 0,
+                'recommended_version' => null,
+                'vulnerabilities' => [],
+            ];
+        }
 
         return [
             'vendor' => $vendor,
             'product' => $product,
             'ecosystem' => $ecosystem,
             'version' => $version,
+            'ambiguous' => false,
+            'candidates' => [],
             'vulnerable' => $matches->isNotEmpty(),
             'vulnerability_count' => $matches->count(),
             'recommended_version' => $this->matcher->recommendedVersion($matches),

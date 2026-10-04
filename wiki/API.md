@@ -12,7 +12,7 @@ Everything returns JSON wrapped in `data`. Validation errors come back as `422` 
 | `product` | yes | CPE product (NVD) or package name (OSV) |
 | `version` | yes | version to check |
 | `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages |
-| `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Packagist` |
+| `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Ubuntu:24.04:LTS`, see [what a check searches](#what-a-check-searches) |
 | `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches from ranges where the source named the product but gave no versions (see [confidence](#confidence)) |
 
 Names are matched exactly, use [products](#search-products) to find the right spelling.
@@ -24,6 +24,8 @@ Names are matched exactly, use [products](#search-products) to find the right sp
     "product": "wordpress",
     "ecosystem": null,
     "version": "6.9.2",
+    "ambiguous": false,
+    "candidates": [],
     "vulnerable": true,
     "vulnerability_count": 1,
     "recommended_version": "6.9.5",
@@ -76,6 +78,28 @@ Every range has a `version_scope`:
 When a record has both a `range` and an `any` range matching, the `range` one wins.
 
 NVD configurations with a top-level `AND` ("vulnerable X running on / with Y") don't produce ranges for the platform node. The platform goes into `plugs_into` instead. A platform node is one with no vulnerable matches, or, in older NVD data that marks both sides vulnerable, one with no version info while another node has some.
+
+### What a check searches
+
+| You pass | Searched | `version` is |
+|---|---|---|
+| `ecosystem` | only that exact ecosystem (`Ubuntu:24.04:LTS`, `npm`, ...) | the package version of that ecosystem |
+| `vendor` only | every range of that vendor | as the source states it |
+| neither | NVD plus language ecosystems (`npm`, `PyPI`, `Go`, ... see `config/matching.php`) | the upstream version |
+
+**OS packages:** pass the full `ecosystem` of the release you run (find it with [products](#search-products)) and the version your package manager reports, e.g. `ecosystem=Ubuntu:24.04:LTS&version=3.0.13-0ubuntu3.5`. Distro advisories (Debian, Ubuntu, Alpine, Chainguard, ...) are never returned for a check without an ecosystem, their versions can't be compared with an upstream one. Debian and Ubuntu advisories are keyed by source package name, so map a binary package like `libssl3` to its source (`dpkg-query -W -f='${source:Package}'`).
+
+**Applications** (WordPress, nginx, ...): use `vendor` + `product` and the upstream version.
+
+### Ambiguous products
+
+Different software can share a product name (`orc` as Apache ORC and as another vendor's `orc`). When neither `vendor` nor `ecosystem` is given and the matches span more than one NVD vendor or more than one language ecosystem, `check` doesn't guess. It returns `ambiguous: true`, `vulnerable: null`, no vulnerabilities, and the `candidates` to pick from. Repeat the request with one of them:
+
+```json
+{ "ambiguous": true, "vulnerable": null, "candidates": [{ "vendor": "apache", "ecosystem": null }, { "vendor": "other", "ecosystem": null }] }
+```
+
+The same package in NVD and OSV (vendor `lodash` and ecosystem `npm`) is one product, not ambiguous. Ambiguity is only detected between matches, so a product with a single colliding vendor in the data still needs a `vendor` from you. Without a vendor or ecosystem, ranges tied to a language runtime (`plugs_into` of `ruby`, `node.js`, `php`, ...) are skipped; name the vendor to include them. Both lists live in `config/matching.php`.
 
 ### Batch
 
