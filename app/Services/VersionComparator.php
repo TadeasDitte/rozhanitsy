@@ -3,6 +3,10 @@
 namespace App\Services;
 
 use App\Models\VersionRange;
+use App\Services\Versioning\ApkVersionScheme;
+use App\Services\Versioning\DpkgVersionScheme;
+use App\Services\Versioning\RpmVersionScheme;
+use App\Services\Versioning\VersionScheme;
 
 /**
  * Ecosystem-agnostic version ordering for matching against version_ranges.
@@ -15,6 +19,10 @@ use App\Models\VersionRange;
  * qualifiers (post, patch, sp, ...) sort after it. A lone trailing letter glued
  * to a number ("1.1.1a", OpenSSL style) is treated as a post-release.
  * Leading "v" and "+build" metadata are ignored.
+ *
+ * Distro ecosystems (Debian, Ubuntu, Alpine, Red Hat, ...) order versions by their
+ * package manager's own rules instead, see ECOSYSTEM_SCHEMES. Any other
+ * ecosystem, and NVD data without one, uses the generic ordering above.
  */
 final class VersionComparator
 {
@@ -56,9 +64,66 @@ final class VersionComparator
     ];
 
     /**
+     * OSV ecosystem name before the first colon (lowercase) => package manager ordering.
+     *
+     * @var array<string, class-string<VersionScheme>>
+     */
+    private const array ECOSYSTEM_SCHEMES = [
+        'debian' => DpkgVersionScheme::class,
+        'ubuntu' => DpkgVersionScheme::class,
+        'red hat' => RpmVersionScheme::class,
+        'rocky linux' => RpmVersionScheme::class,
+        'almalinux' => RpmVersionScheme::class,
+        'suse' => RpmVersionScheme::class,
+        'opensuse' => RpmVersionScheme::class,
+        'mageia' => RpmVersionScheme::class,
+        'openeuler' => RpmVersionScheme::class,
+        'photon os' => RpmVersionScheme::class,
+        'azure linux' => RpmVersionScheme::class,
+        'alpine' => ApkVersionScheme::class,
+        'alpaquita' => ApkVersionScheme::class,
+        'chainguard' => ApkVersionScheme::class,
+        'wolfi' => ApkVersionScheme::class,
+        'minimos' => ApkVersionScheme::class,
+    ];
+
+    /**
+     * @var array<class-string<VersionScheme>, VersionScheme>
+     */
+    private array $schemes = [];
+
+    /**
+     * @param  ?string  $ecosystem  the OSV ecosystem both versions belong to, e.g. "Debian:12"
      * @return int -1 when $a < $b, 0 when equal, 1 when $a > $b
      */
-    public function compare(string $a, string $b): int
+    public function compare(string $a, string $b, ?string $ecosystem = null): int
+    {
+        return $this->schemeFor($ecosystem)?->compare($a, $b) ?? $this->compareGeneric($a, $b);
+    }
+
+    public function isInRange(string $version, VersionRange $range): bool
+    {
+        $ecosystem = $range->ecosystem;
+
+        return ($range->version_incl_start === null || $this->compare($version, $range->version_incl_start, $ecosystem) >= 0)
+            && ($range->version_excl_start === null || $this->compare($version, $range->version_excl_start, $ecosystem) > 0)
+            && ($range->version_incl_end === null || $this->compare($version, $range->version_incl_end, $ecosystem) <= 0)
+            && ($range->version_excl_end === null || $this->compare($version, $range->version_excl_end, $ecosystem) < 0);
+    }
+
+    private function schemeFor(?string $ecosystem): ?VersionScheme
+    {
+        if ($ecosystem === null) {
+            return null;
+        }
+
+        $family = strtolower(explode(':', $ecosystem, 2)[0]);
+        $scheme = self::ECOSYSTEM_SCHEMES[$family] ?? null;
+
+        return $scheme === null ? null : ($this->schemes[$scheme] ??= new $scheme);
+    }
+
+    private function compareGeneric(string $a, string $b): int
     {
         $left = $this->normalize($a);
         $right = $this->normalize($b);
@@ -66,14 +131,6 @@ final class VersionComparator
         return $this->compareNumbers($left['epoch'], $right['epoch'])
             ?: $this->compareRelease($left['release'], $right['release'])
             ?: $this->compareSuffix($left['suffix'], $right['suffix']);
-    }
-
-    public function isInRange(string $version, VersionRange $range): bool
-    {
-        return ($range->version_incl_start === null || $this->compare($version, $range->version_incl_start) >= 0)
-            && ($range->version_excl_start === null || $this->compare($version, $range->version_excl_start) > 0)
-            && ($range->version_incl_end === null || $this->compare($version, $range->version_incl_end) <= 0)
-            && ($range->version_excl_end === null || $this->compare($version, $range->version_excl_end) < 0);
     }
 
     /**

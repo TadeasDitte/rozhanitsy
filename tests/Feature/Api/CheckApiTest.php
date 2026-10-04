@@ -311,3 +311,30 @@ test('asks for an ecosystem when a name exists in several language ecosystems', 
             ['vendor' => null, 'ecosystem' => 'npm'],
         ]);
 });
+
+test('compares versions by the distro rules of the range ecosystem', function (string $installed, bool $vulnerable) {
+    VersionRange::factory()->create([
+        'vendor' => 'debian', 'ecosystem' => 'Debian:12', 'product' => 'openssl',
+        'version_incl_start' => null, 'version_excl_end' => '1.0-1',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'openssl', 'version' => $installed, 'ecosystem' => 'Debian:12']))
+        ->assertJsonPath('data.vulnerable', $vulnerable);
+})->with([
+    'tilde pre-release is older than the fix' => ['1.0~rc1-1', true],
+    'release candidate letters are newer than the fix' => ['1.0rc1-1', false],
+    'the fix itself' => ['1.0-1', false],
+]);
+
+test('recommends the highest fix by the distro rules', function () {
+    foreach (['1.0-1', '1.0rc1-1'] as $fixedIn) {
+        VersionRange::factory()->create([
+            'vendor' => 'debian', 'ecosystem' => 'Debian:12', 'product' => 'openssl',
+            'version_incl_start' => null, 'version_excl_end' => $fixedIn,
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'openssl', 'version' => '0.9', 'ecosystem' => 'Debian:12']))
+        ->assertJsonPath('data.vulnerability_count', 2)
+        ->assertJsonPath('data.recommended_version', '1.0rc1-1');
+});

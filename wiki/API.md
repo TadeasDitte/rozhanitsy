@@ -178,7 +178,7 @@ Case-insensitive prefix search on product name (`q` at least 2 characters, `ecos
 
 ## Version comparison
 
-Versions are compared by `App\Services\VersionComparator`, one ruleset for all ecosystems:
+Versions are compared by `App\Services\VersionComparator`. Distro ecosystems use their package manager's own ordering (see below), everything else (NVD, `npm`, `PyPI`, ...) uses one generic ruleset:
 
 - epoch first (`1:2.0` > `9.9`)
 - numeric release segment, zero padded (`1.0` == `1.0.0`, `1.9` < `1.10`)
@@ -187,4 +187,14 @@ Versions are compared by `App\Services\VersionComparator`, one ruleset for all e
 - a lone trailing letter is a post-release (`1.1.1a` > `1.1.1`, openssl style)
 - leading `v`, case and `+build` metadata are ignored
 
-Ecosystem specific rules (debian `~`, rpm, maven qualifiers) aren't implemented yet.
+### Distro ecosystems
+
+The family is the part of the ecosystem before the first `:` (`Debian:12` is `Debian`), case insensitive.
+
+| Ecosystem family | Ordering |
+|---|---|
+| `Debian`, `Ubuntu` | dpkg: `[epoch:]upstream[-revision]`, `~` sorts before everything (`1.0~rc1-1` < `1.0-1`), letters sort after the bare release (`1.0rc1-1` > `1.0-1`, the opposite of the generic rule) |
+| `Red Hat`, `Rocky Linux`, `AlmaLinux`, `SUSE`, `openSUSE`, `Mageia`, `openEuler`, `Photon OS`, `Azure Linux` | rpmvercmp: `[epoch:]version[-release]`, `~` before the release, `^` after it, numbers newer than letters. A release is only compared when both versions have one |
+| `Alpine`, `Alpaquita`, `Chainguard`, `Wolfi`, `MinimOS` | apk: `1.2.3a_rc1-r2`, `_alpha` < `_beta` < `_pre` < `_rc` < release < `_cvs` / `_svn` / `_git` / `_hg` / `_p`, then `-rN` |
+
+Each ordering passes the reference vectors of its package manager (dpkg's `Dpkg_Version.t`, rpm's `rpmvercmp.at`, apk-tools' `version.data`). Maven qualifiers and other ecosystems still use the generic rules.

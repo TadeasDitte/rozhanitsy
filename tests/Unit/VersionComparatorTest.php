@@ -55,3 +55,30 @@ test('checks a version against range bounds', function (array $bounds, string $v
     'between both bounds' => [['version_incl_start' => '1.0', 'version_excl_end' => '1.5'], '1.4.9', true],
     'past both bounds' => [['version_incl_start' => '1.0', 'version_excl_end' => '1.5'], '1.5.0', false],
 ]);
+
+test('orders versions by the package manager rules of a distro ecosystem', function (string $ecosystem, string $lower, string $higher) {
+    $comparator = new VersionComparator;
+
+    expect($comparator->compare($lower, $higher, $ecosystem))->toBe(-1)
+        ->and($comparator->compare($higher, $lower, $ecosystem))->toBe(1);
+})->with([
+    'debian tilde' => ['Debian:12', '1.0~rc1-1', '1.0-1'],
+    'ubuntu epoch' => ['Ubuntu:22.04:LTS', '1:9.9', '2:1.0'],
+    'ubuntu pro release' => ['Ubuntu:Pro:20.04:LTS', '3.0.13-0ubuntu3.5', '3.0.13-0ubuntu3.16'],
+    'red hat caret' => ['Red Hat:enterprise_linux:9::appstream', '1.0', '1.0^git1'],
+    'rocky release' => ['Rocky Linux:9', '1.2-3.el9', '1.2-10.el9'],
+    'alpine revision' => ['Alpine:v3.19', '3.1.4-r9', '3.1.4-r10'],
+    'family is case insensitive' => ['debian', '1.0~rc1-1', '1.0-1'],
+]);
+
+test('orders versions generically without a distro ecosystem', function (?string $ecosystem) {
+    expect((new VersionComparator)->compare('1.0rc1-1', '1.0-1', $ecosystem))->toBe(-1);
+})->with([
+    'no ecosystem' => [null],
+    'language ecosystem' => ['npm'],
+    'unknown ecosystem' => ['Mystery:1'],
+]);
+
+test('keeps a distro ecosystem from using the generic release candidate rule', function () {
+    expect((new VersionComparator)->compare('1.0rc1-1', '1.0-1', 'Debian:12'))->toBe(1);
+});
