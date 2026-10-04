@@ -4,6 +4,8 @@ use App\Models\Format;
 use App\Models\ParsedRecord;
 use App\Models\Source;
 use App\Models\VersionRange;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 
 function seedL2Formats(): void
@@ -282,3 +284,27 @@ test('checks a multi-branch fix against the CNA ranges instead of the lossy CPE 
     'old release' => ['5.30.0', true, '5.40.5-RC1'],
     'development release' => ['5.43.4', true, '5.43.11'],
 ]);
+
+test('inserts the ranges of a large record in batches that fit the bound parameter limit', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $matches = array_map(fn (int $minor): array => [
+        'criteria' => "cpe:2.3:o:cisco:ios:12.2({$minor}):*:*:*:*:*:*:*",
+        'vulnerable' => true,
+    ], range(1, 5000));
+    $record = ParsedRecord::factory()->ofSource($source)->create([
+        'raw_ranges' => [['nodes' => [['operator' => 'OR', 'negate' => false, 'cpeMatch' => $matches]]]],
+    ]);
+    $boundParameters = [];
+    DB::listen(function (QueryExecuted $query) use (&$boundParameters) {
+        if (str_starts_with($query->sql, 'insert into "version_ranges"')) {
+            $boundParameters[] = count($query->bindings);
+        }
+    });
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    expect($record->refresh()->resolved_at)->not->toBeNull();
+    expect($record->versionRanges()->count())->toBe(5000);
+    expect(max($boundParameters))->toBeLessThanOrEqual(65535);
+});
