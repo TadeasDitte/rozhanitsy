@@ -2,6 +2,8 @@
 
 namespace App\Ingestion\Support;
 
+use InvalidArgumentException;
+
 /**
  * One `affected` entry of a CVE record as the CNA (the vendor or its advisory
  * database) wrote it, reduced to the product names it mentions and the version
@@ -17,38 +19,33 @@ final readonly class CnaAffected
     /**
      * @param  list<string>  $names  normalized vendor, product, package and module names
      * @param  list<Bounds>  $ranges
+     * @param  ?string  $vendor  CPE style vendor to file the ranges under when no CPE range names the product
+     * @param  ?string  $product  CPE style product, see $vendor
+     * @param  bool  $isAffectedByDefault  whether the ranges come from an everything-affected default rather than listed versions
      */
-    private function __construct(public array $names, public array $ranges) {}
+    private function __construct(
+        public array $names,
+        public array $ranges,
+        public ?string $vendor,
+        public ?string $product,
+        public bool $isAffectedByDefault = false,
+    ) {}
 
     /**
-     * Returns null unless every affected version is a readable range and the
-     * entry does not declare everything affected by default.
+     * Returns null unless every affected version is a readable range. An entry
+     * that declares everything affected by default is read as one open range,
+     * cut short by an unaffected "X and later" when it has one.
      *
      * @param  array<string, mixed>  $entry
      */
     public static function parse(array $entry): ?self
     {
-        if (($entry['defaultStatus'] ?? null) === 'affected') {
-            return null;
-        }
+        $isAffectedByDefault = ($entry['defaultStatus'] ?? null) === 'affected';
+        $ranges = $isAffectedByDefault
+            ? self::affectedByDefault((array) ($entry['versions'] ?? []))
+            : self::affectedRanges((array) ($entry['versions'] ?? []));
 
-        $ranges = [];
-
-        foreach ((array) ($entry['versions'] ?? []) as $item) {
-            if (! is_array($item) || ($item['status'] ?? null) !== 'affected') {
-                continue;
-            }
-
-            $bounds = self::bounds($item);
-
-            if ($bounds === null) {
-                return null;
-            }
-
-            $ranges[] = $bounds;
-        }
-
-        if ($ranges === []) {
+        if ($ranges === null || $ranges === []) {
             return null;
         }
 
@@ -60,7 +57,13 @@ final readonly class CnaAffected
             }
         }
 
-        return $names === [] ? null : new self(array_values(array_unique($names)), $ranges);
+        if ($names === []) {
+            return null;
+        }
+
+        [$vendor, $product] = self::cpeName($entry);
+
+        return new self(array_values(array_unique($names)), $ranges, $vendor, $product, $isAffectedByDefault);
     }
 
     /**
@@ -79,6 +82,105 @@ final readonly class CnaAffected
     }
 
     /**
+     * @param  array<int, mixed>  $versions
+     * @return list<Bounds>|null
+     */
+    private static function affectedRanges(array $versions): ?array
+    {
+        $ranges = [];
+
+        foreach ($versions as $item) {
+            if (! is_array($item) || ($item['status'] ?? null) !== 'affected') {
+                continue;
+            }
+
+            $bounds = self::bounds($item);
+
+            if ($bounds === null) {
+                return null;
+            }
+
+            $ranges[] = $bounds;
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * Everything is affected except what the entry lists as unaffected. Only an
+     * open ended unaffected tail ("X and later") can be expressed as a range,
+     * the affected items add nothing to an everything-affected default.
+     *
+     * @param  array<int, mixed>  $versions
+     * @return list<Bounds>|null
+     */
+    private static function affectedByDefault(array $versions): ?array
+    {
+        $fixedIn = [];
+
+        foreach ($versions as $item) {
+            if (! is_array($item) || ($item['status'] ?? null) !== 'unaffected') {
+                continue;
+            }
+
+            $version = is_string($item['version'] ?? null) ? trim($item['version']) : '';
+            $isOpenEnded = trim((string) ($item['lessThan'] ?? $item['lessThanOrEqual'] ?? '')) === '*';
+
+            if (! $isOpenEnded || ! self::isVersion($version)) {
+                return null;
+            }
+
+            $fixedIn[] = $version;
+        }
+
+        if (count($fixedIn) > 1) {
+            return null;
+        }
+
+        return [[
+            'startIncl' => null,
+            'startExcl' => null,
+            'endIncl' => null,
+            'endExcl' => $fixedIn[0] ?? null,
+            'raw' => (string) json_encode(['defaultStatus' => 'affected', 'versions' => $versions], JSON_UNESCAPED_SLASHES),
+        ]];
+    }
+
+    /**
+     * The vendor and product to file the ranges under: the entry's own CPE when
+     * it lists one, else the package name or a slug of the product name.
+     *
+     * @param  array<string, mixed>  $entry
+     * @return array{?string, ?string}
+     */
+    private static function cpeName(array $entry): array
+    {
+        foreach ((array) ($entry['cpes'] ?? []) as $criteria) {
+            try {
+                $cpe = is_string($criteria) ? Cpe23::parse($criteria) : null;
+            } catch (InvalidArgumentException) {
+                $cpe = null;
+            }
+
+            if ($cpe !== null && ! self::isPlaceholder($cpe->product)) {
+                return [self::isPlaceholder($cpe->vendor) ? null : $cpe->vendor, $cpe->product];
+            }
+        }
+
+        $vendor = is_string($entry['vendor'] ?? null) && ! self::isPlaceholder($entry['vendor'])
+            ? self::normalize($entry['vendor'])
+            : null;
+
+        foreach ([$entry['packageName'] ?? null, $entry['product'] ?? null] as $name) {
+            if (is_string($name) && ! self::isPlaceholder($name)) {
+                return [$vendor, self::slug($name)];
+            }
+        }
+
+        return [$vendor, null];
+    }
+
+    /**
      * @param  array<string, mixed>  $item
      * @return Bounds|null
      */
@@ -94,12 +196,15 @@ final readonly class CnaAffected
         }
 
         if (isset($item['lessThan']) || isset($item['lessThanOrEqual'])) {
-            if (! self::isVersion($version)) {
+            $isOpenStart = $version === '0' || $version === '*' || $version === $lessThan;
+
+            if (! $isOpenStart && ! self::isVersion($version)) {
                 return null;
             }
 
             return [
-                'startIncl' => $version === '0' ? null : $version,
+                // WPScan writes "< X" as version X, lessThan X, Wordfence as version *
+                'startIncl' => $isOpenStart ? null : $version,
                 'startExcl' => null,
                 'endIncl' => $lessThanOrEqual,
                 'endExcl' => $lessThan,
@@ -190,5 +295,13 @@ final readonly class CnaAffected
     private static function normalize(string $name): string
     {
         return preg_replace('/[^a-z0-9]+/', '', strtolower($name)) ?? '';
+    }
+
+    /**
+     * "WP GDPR Compliance" becomes `wp-gdpr-compliance`, the shape of a plugin slug.
+     */
+    private static function slug(string $name): string
+    {
+        return trim(preg_replace('/[^a-z0-9_.\/]+/', '-', strtolower(trim($name))) ?? '', '-');
     }
 }

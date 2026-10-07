@@ -338,3 +338,51 @@ test('recommends the highest fix by the distro rules', function () {
         ->assertJsonPath('data.vulnerability_count', 2)
         ->assertJsonPath('data.recommended_version', '1.0rc1-1');
 });
+
+test('matches the ranges of every vendor a product is filed under', function () {
+    VersionRange::factory()->create([
+        'vendor' => 'woocommerce', 'product' => 'woocommerce', 'version_incl_start' => null, 'version_excl_end' => '8.0',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['vendor' => 'automattic', 'product' => 'woocommerce', 'version' => '5.2.5']))
+        ->assertJsonPath('data.vulnerability_count', 1);
+    $this->getJson(route('api.v1.check', ['vendor' => 'other_vendor', 'product' => 'woocommerce', 'version' => '5.2.5']))
+        ->assertJsonPath('data.vulnerability_count', 0);
+});
+
+test('treats aliased vendors as one when judging ambiguity', function () {
+    foreach (['automattic', 'woocommerce'] as $vendor) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'woocommerce', 'version_incl_start' => null, 'version_excl_end' => '8.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'woocommerce', 'version' => '5.2.5']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 2);
+});
+
+test('reports a low confidence range only when low confidence results are requested', function () {
+    wordpressRange(['version_excl_end' => '7.1.2', 'confidence' => 'low'], ['external_id' => 'CVE-2026-66666']);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '7.0.7']))
+        ->assertJsonPath('data.vulnerable', false);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '7.0.7', 'include_low_confidence' => 1]))
+        ->assertJsonPath('data.vulnerable', true)
+        ->assertJsonPath('data.recommended_version', null)
+        ->assertJsonPath('data.vulnerabilities.0.confidence', 'low')
+        ->assertJsonPath('data.vulnerabilities.0.affected_range.confidence', 'low');
+});
+
+test('prefers the high confidence range when a record also has a low confidence one', function () {
+    $range = wordpressRange(['version_incl_start' => '7.0', 'version_excl_end' => '7.0.7']);
+    VersionRange::factory()->for($range->parsedRecord)->create([
+        'vendor' => 'wordpress', 'product' => 'wordpress', 'version_incl_start' => null, 'version_excl_end' => '7.1.2', 'confidence' => 'low',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '7.0.2', 'include_low_confidence' => 1]))
+        ->assertJsonPath('data.vulnerability_count', 1)
+        ->assertJsonPath('data.vulnerabilities.0.confidence', 'high')
+        ->assertJsonPath('data.vulnerabilities.0.fixed_in', '7.0.7');
+});

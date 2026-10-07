@@ -14,7 +14,7 @@ final class RangeResolvingRunner
 {
     /**
      * Rows per insert statement. A statement can bind at most 65535 parameters
-     * (PostgreSQL), and a range has 16 columns, so one huge record cannot go in one.
+     * (PostgreSQL), and a range has 17 columns, so one huge record cannot go in one.
      * Rows are also built one batch at a time: a record can have hundreds of
      * thousands of ranges and a full set of row arrays does not fit in memory.
      */
@@ -70,6 +70,7 @@ final class RangeResolvingRunner
                         'version_incl_end' => $range->versionInclEnd,
                         'version_excl_end' => $range->versionExclEnd,
                         'version_scope' => $range->versionScope,
+                        'confidence' => $range->confidence,
                         'plugs_into' => $range->plugsInto,
                         'raw' => $range->raw,
                         'created_at' => $timestamp,

@@ -1,6 +1,7 @@
 <?php
 
 use App\Ingestion\Parsers\NVDRangeParser;
+use App\Ingestion\VersionRangeData;
 
 /**
  * @param  list<array<string, mixed>>  $cpeMatch
@@ -311,7 +312,9 @@ test('emits each CNA range once however many CPE ranges the product has', functi
         ]],
     ]);
 
-    expect($ranges)->toHaveCount(2);
+    $fromCna = array_filter($ranges, fn ($range): bool => str_starts_with((string) $range->raw, 'cna:'));
+
+    expect($fromCna)->toHaveCount(2);
 });
 
 test('keeps the platform of the CPE range it replaces', function () {
@@ -383,3 +386,138 @@ test('never replaces a range that does not apply to any version', function () {
     expect($ranges)->toHaveCount(1);
     expect($ranges[0]->versionScope)->toBe('na');
 });
+
+/**
+ * @param  list<array<string, mixed>>  $cpeBounds  version qualifiers, one CPE match each
+ * @param  list<array<string, mixed>>  $cnaVersions
+ * @return list<array<string, mixed>>
+ */
+function wordpressConfigWithCna(array $cpeBounds, array $cnaVersions): array
+{
+    return [
+        ...nvdConfig(array_map(fn (array $bounds): array => [
+            'criteria' => 'cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*',
+            'vulnerable' => true,
+            ...$bounds,
+        ], $cpeBounds)),
+        ['cna' => [['vendor' => 'WordPress Foundation', 'product' => 'WordPress', 'defaultStatus' => 'unaffected', 'versions' => $cnaVersions]]],
+    ];
+}
+
+/**
+ * @param  list<VersionRangeData>  $ranges
+ * @return list<string>
+ */
+function rangeSummaries(array $ranges): array
+{
+    return array_map(fn ($range): string => sprintf(
+        '%s %s-%s%s',
+        str_starts_with((string) $range->raw, 'cna:') ? 'cna' : 'cpe',
+        $range->versionInclStart ?? '',
+        $range->versionExclEnd ?? $range->versionInclEnd ?? '',
+        $range->confidence === 'low' ? ' low' : '',
+    ), $ranges);
+}
+
+test('keeps per-branch CPE ranges over a coarse CNA range', function () {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [
+            ['versionStartIncluding' => '6.9', 'versionEndExcluding' => '6.9.10'],
+            ['versionStartIncluding' => '7.0', 'versionEndExcluding' => '7.0.7'],
+        ],
+        [['version' => '0', 'lessThan' => '7.1.2', 'status' => 'affected']],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe 6.9-6.9.10', 'cpe 7.0-7.0.7']);
+});
+
+test('keeps a CPE range with a lower bound over an unbounded CNA range', function () {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [['versionStartIncluding' => '1.7.0.0', 'versionEndExcluding' => '1.7.6.5']],
+        [['version' => '0', 'lessThan' => '1.7.6.5', 'status' => 'affected']],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe 1.7.0.0-1.7.6.5']);
+});
+
+test('adds the CNA ranges as low confidence when both sources are per-branch', function () {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [
+            ['versionStartIncluding' => '5.1', 'versionEndExcluding' => '5.1.18'],
+            ['versionStartIncluding' => '6.3', 'versionEndExcluding' => '6.3.2'],
+        ],
+        [['version' => '6.3', 'lessThan' => '6.3.2', 'status' => 'affected']],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe 5.1-5.1.18', 'cpe 6.3-6.3.2', 'cna 6.3-6.3.2 low']);
+});
+
+test('drops a CNA range whose start lies past its end', function () {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [['versionStartIncluding' => '4.7', 'versionEndExcluding' => '4.7.21']],
+        [
+            ['version' => '4.70', 'lessThan' => '4.7.21', 'status' => 'affected'],
+            ['version' => '5.0', 'lessThan' => '5.0.12', 'status' => 'affected'],
+        ],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe 4.7-4.7.21', 'cna 5.0-5.0.12 low']);
+});
+
+test('reads the WPScan less than encoding instead of letting an empty range hide the CPE one', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([['criteria' => 'cpe:2.3:a:autoptimize:autoptimize:*:*:*:*:*:wordpress:*:*', 'vulnerable' => true, 'versionEndExcluding' => '3.1.0']]),
+        ['cna' => [['vendor' => 'Unknown', 'product' => 'Autoptimize', 'versions' => [['version' => '3.1.0', 'lessThan' => '3.1.0', 'status' => 'affected']]]]],
+    ]);
+
+    expect(rangeSummaries($ranges))->toBe(['cna -3.1.0']);
+});
+
+test('files the CNA ranges of a record without CPE configurations under the CNA product', function () {
+    $ranges = (new NVDRangeParser)->parse([['cna' => [[
+        'vendor' => 'Cookie Information',
+        'product' => 'WP GDPR Compliance',
+        'defaultStatus' => 'unaffected',
+        'versions' => [['version' => '*', 'lessThanOrEqual' => '2.0.22', 'status' => 'affected']],
+    ]]]]);
+
+    expect($ranges)->toHaveCount(1)
+        ->and($ranges[0]->vendor)->toBe('cookieinformation')
+        ->and($ranges[0]->product)->toBe('wp-gdpr-compliance')
+        ->and($ranges[0]->versionInclEnd)->toBe('2.0.22')
+        ->and($ranges[0]->versionScope)->toBe('range')
+        ->and($ranges[0]->confidence)->toBe('high');
+});
+
+test('adds an everything-affected CNA default as low confidence beside the CPE range', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([['criteria' => 'cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '6.0.3']]),
+        ['cna' => [['vendor' => 'WordPress', 'product' => 'WordPress', 'defaultStatus' => 'affected', 'versions' => []]]],
+    ]);
+
+    expect(rangeSummaries($ranges))->toBe(['cpe -6.0.3', 'cna - low']);
+});
+
+test('narrows a CPE with an update to the pre-releases it names', function (string $criteria, array $bounds) {
+    $ranges = (new NVDRangeParser)->parse(nvdConfig([['criteria' => $criteria, 'vulnerable' => true]]));
+
+    expect([$ranges[0]->versionInclStart, $ranges[0]->versionInclEnd, $ranges[0]->versionExclEnd])->toBe($bounds);
+})->with([
+    'every beta' => ['cpe:2.3:a:wordpress:wordpress:5.8:beta*:*:*:*:*:*:*', ['5.8-beta', null, '5.8']],
+    'one beta' => ['cpe:2.3:a:wordpress:wordpress:5.8:beta1:*:*:*:*:*:*', ['5.8-beta1', '5.8-beta1', null]],
+    'no update' => ['cpe:2.3:a:wordpress:wordpress:5.8:-:*:*:*:*:*:*', ['5.8', '5.8', null]],
+]);
+
+test('keeps a coarse CNA-only range of a backporting product as low confidence', function (array $version, string $expected) {
+    $ranges = (new NVDRangeParser(backportingProducts: ['wordpress:wordpress']))->parse([['cna' => [[
+        'vendor' => 'WordPress',
+        'product' => 'WordPress',
+        'defaultStatus' => 'unaffected',
+        'versions' => [['status' => 'affected', ...$version]],
+    ]]]]);
+
+    expect(rangeSummaries($ranges))->toBe([$expected]);
+})->with([
+    'no lower bound' => [['version' => '*', 'lessThan' => '7.1.2'], 'cna -7.1.2 low'],
+    'one branch' => [['version' => '7.0', 'lessThan' => '7.0.7'], 'cna 7.0-7.0.7'],
+]);

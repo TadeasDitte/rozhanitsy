@@ -31,4 +31,35 @@ return [
 
     'language_ecosystems' => ['npm', 'PyPI', 'Go', 'crates.io', 'RubyGems', 'Packagist', 'Maven', 'NuGet', 'Hex', 'Pub', 'CRAN', 'Hackage', 'SwiftURL'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Vendor Aliases
+    |--------------------------------------------------------------------------
+    |
+    | Groups of vendor names NVD and the CNAs use interchangeably for the same
+    | products (WooCommerce is filed under both automattic and woocommerce). A
+    | check naming one vendor of a group matches ranges of every vendor in it.
+    |
+    */
+
+    'vendor_aliases' => [
+        ['automattic', 'woocommerce'],
+        ['tms-outsource', 'wpdatatables'],
+        ['gutenberg_project', 'wordpress'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Backporting Products
+    |--------------------------------------------------------------------------
+    |
+    | vendor:product pairs that ship security fixes on older release branches
+    | too. A CNA range such as "< 7.1.2" with no lower bound also covers the
+    | patched branch releases (7.0.7, 6.9.10, ...) of these, so when NVD has not
+    | analysed the record yet, such a range is stored as low confidence.
+    |
+    */
+
+    'backporting_products' => ['wordpress:wordpress'],
+
 ];

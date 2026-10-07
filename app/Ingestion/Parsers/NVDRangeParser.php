@@ -5,9 +5,19 @@ namespace App\Ingestion\Parsers;
 use App\Ingestion\Support\CnaAffected;
 use App\Ingestion\Support\Cpe23;
 use App\Ingestion\VersionRangeData;
+use App\Services\VersionComparator;
+use Illuminate\Container\Attributes\Config;
 
 final class NVDRangeParser implements RangeParser
 {
+    /**
+     * @param  list<string>  $backportingProducts  vendor:product pairs, see config/matching.php
+     */
+    public function __construct(
+        private readonly VersionComparator $comparator = new VersionComparator,
+        #[Config('matching.backporting_products')] private readonly array $backportingProducts = [],
+    ) {}
+
     public function parse(array $rawRanges): array
     {
         $ranges = [];
@@ -41,81 +51,212 @@ final class NVDRangeParser implements RangeParser
             }
         }
 
-        return $this->preferCna($ranges, $cnaEntries);
+        return $this->combineWithCna($ranges, $cnaEntries);
     }
 
     /**
      * A CPE match holds one contiguous range, so a fix shipped on several release
-     * branches is lossy there. Where the CNA's own `affected` entry is a plain
-     * list of ranges for the same product, those replace the CPE ranges.
+     * branches is lossy there, but the CNA's own `affected` entry is often just as
+     * coarse ("< 7.1.2" while NVD lists every backport). Per vendor / product the
+     * source that separates release branches wins, both when both do, and the
+     * CNA when neither does. A record NVD has not analysed yet has no CPE ranges
+     * at all, its CNA ranges are filed under the CNA's own product names.
+     *
+     * A wrong range costs a false alarm, so CNA ranges NVD does not back up are
+     * kept as low confidence: the CNA half of a combined set, everything-affected
+     * defaults, and coarse ranges of products that backport fixes.
      *
      * @param  list<VersionRangeData>  $ranges
      * @param  array<int, mixed>  $cnaEntries
      * @return list<VersionRangeData>
      */
-    private function preferCna(array $ranges, array $cnaEntries): array
+    private function combineWithCna(array $ranges, array $cnaEntries): array
     {
-        if ($cnaEntries === []) {
+        $cnas = array_values(array_filter(array_map(
+            fn (mixed $entry): ?CnaAffected => is_array($entry) ? CnaAffected::parse($entry) : null,
+            $cnaEntries,
+        )));
+
+        if ($cnas === []) {
             return $ranges;
         }
 
-        /** @var array<string, VersionRangeData> $templates the first replaceable CPE range of each vendor / product */
-        $templates = [];
+        /** @var array<string, list<VersionRangeData>> $cpeRanges the replaceable CPE ranges of each vendor / product */
+        $cpeRanges = [];
 
         foreach ($ranges as $range) {
             if ($range->product !== null && $range->versionScope !== 'na') {
-                $templates[$range->vendor.'|'.$range->product] ??= $range;
+                $cpeRanges[$range->vendor.'|'.$range->product][] = $range;
             }
         }
 
-        /** @var array<string, array{template: VersionRangeData, bounds: list<array<string, ?string>>}> $replacements */
-        $replacements = [];
+        if ($ranges === []) {
+            return $this->cnaOnlyRanges($cnas);
+        }
 
-        foreach ($cnaEntries as $entry) {
-            $cna = is_array($entry) ? CnaAffected::parse($entry) : null;
+        if ($cpeRanges === []) {
+            return $ranges;
+        }
 
-            if ($cna === null) {
-                continue;
-            }
+        /** @var array<string, list<VersionRangeData>> $cnaRanges */
+        $cnaRanges = [];
 
-            foreach ($templates as $key => $template) {
+        foreach ($cnas as $cna) {
+            foreach ($cpeRanges as $key => $group) {
+                $template = $group[0];
+
                 if (! $cna->isAbout($template->vendor, (string) $template->product)) {
                     continue;
                 }
 
-                $replacements[$key] ??= ['template' => $template, 'bounds' => []];
-                array_push($replacements[$key]['bounds'], ...$cna->ranges);
+                foreach ($this->consistentBounds($cna->ranges) as $bounds) {
+                    $cnaRanges[$key][] = $this->cnaRange($bounds, $template->type, $template->vendor, $template->product, $template->plugsInto, $cna->isAffectedByDefault ? 'low' : 'high');
+                }
             }
-        }
-
-        if ($replacements === []) {
-            return $ranges;
         }
 
         $kept = array_values(array_filter(
             $ranges,
-            fn (VersionRangeData $range): bool => $range->versionScope === 'na' || ! isset($replacements[$range->vendor.'|'.$range->product]),
+            fn (VersionRangeData $range): bool => $range->versionScope === 'na' || ! isset($cnaRanges[$range->vendor.'|'.$range->product]),
         ));
 
-        foreach ($replacements as $replacement) {
-            foreach ($replacement['bounds'] as $bounds) {
-                $kept[] = new VersionRangeData(
-                    type: $replacement['template']->type,
-                    ecosystem: null,
-                    packageManager: null,
-                    vendor: $replacement['template']->vendor,
-                    product: $replacement['template']->product,
-                    versionInclStart: $bounds['startIncl'],
-                    versionExclStart: $bounds['startExcl'],
-                    versionInclEnd: $bounds['endIncl'],
-                    versionExclEnd: $bounds['endExcl'],
-                    plugsInto: $replacement['template']->plugsInto,
-                    raw: 'cna:'.$bounds['raw'],
-                );
-            }
+        foreach ($cnaRanges as $key => $fromCna) {
+            array_push($kept, ...$this->choose($cpeRanges[$key], $fromCna));
         }
 
         return $kept;
+    }
+
+    /**
+     * @param  list<VersionRangeData>  $fromCpe
+     * @param  list<VersionRangeData>  $fromCna
+     * @return list<VersionRangeData>
+     */
+    private function choose(array $fromCpe, array $fromCna): array
+    {
+        $bounded = array_values(array_filter($fromCpe, fn (VersionRangeData $range): bool => $range->versionScope === 'range'));
+        $confident = array_values(array_filter($fromCna, fn (VersionRangeData $range): bool => $range->confidence === 'high'));
+        $doubtful = array_values(array_filter($fromCna, fn (VersionRangeData $range): bool => $range->confidence === 'low'));
+
+        if ($confident === []) {
+            return [...$fromCpe, ...$doubtful];
+        }
+
+        if ($bounded === []) {
+            return $fromCna;
+        }
+
+        return match ([$this->isPerBranch($bounded), $this->isPerBranch($confident)]) {
+            [true, true] => [...$bounded, ...array_map($this->withLowConfidence(...), $confident), ...$doubtful],
+            [true, false] => [...$fromCpe, ...$doubtful],
+            default => $fromCna,
+        };
+    }
+
+    private function withLowConfidence(VersionRangeData $range): VersionRangeData
+    {
+        return new VersionRangeData(
+            type: $range->type,
+            ecosystem: $range->ecosystem,
+            packageManager: $range->packageManager,
+            vendor: $range->vendor,
+            product: $range->product,
+            versionInclStart: $range->versionInclStart,
+            versionExclStart: $range->versionExclStart,
+            versionInclEnd: $range->versionInclEnd,
+            versionExclEnd: $range->versionExclEnd,
+            plugsInto: $range->plugsInto,
+            raw: $range->raw,
+            versionScope: $range->versionScope,
+            confidence: 'low',
+        );
+    }
+
+    /**
+     * Whether the ranges tell release branches apart, i.e. any of them starts
+     * somewhere other than the first version.
+     *
+     * @param  list<VersionRangeData>  $ranges
+     */
+    private function isPerBranch(array $ranges): bool
+    {
+        foreach ($ranges as $range) {
+            if ($range->versionInclStart !== null || $range->versionExclStart !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  list<CnaAffected>  $cnas
+     * @return list<VersionRangeData>
+     */
+    private function cnaOnlyRanges(array $cnas): array
+    {
+        $ranges = [];
+
+        foreach ($cnas as $cna) {
+            if ($cna->product === null) {
+                continue;
+            }
+
+            foreach ($this->consistentBounds($cna->ranges) as $bounds) {
+                $isCoarseBackport = $bounds['startIncl'] === null && $bounds['startExcl'] === null
+                    && in_array($cna->vendor.':'.$cna->product, $this->backportingProducts, true);
+
+                $ranges[] = $this->cnaRange($bounds, 'a', $cna->vendor, $cna->product, null, $cna->isAffectedByDefault || $isCoarseBackport ? 'low' : 'high');
+            }
+        }
+
+        return $ranges;
+    }
+
+    /**
+     * Drops ranges whose start lies past their end, such as a mistyped "4.70" for
+     * "4.7.0", which would otherwise hide every version of the branch.
+     *
+     * @param  list<array<string, ?string>>  $ranges
+     * @return list<array<string, ?string>>
+     */
+    private function consistentBounds(array $ranges): array
+    {
+        return array_values(array_filter($ranges, function (array $bounds): bool {
+            $start = $bounds['startIncl'] ?? $bounds['startExcl'];
+            $end = $bounds['endIncl'] ?? $bounds['endExcl'];
+
+            if ($start === null || $end === null) {
+                return true;
+            }
+
+            $order = $this->comparator->compare($start, $end);
+
+            return $bounds['startIncl'] !== null && $bounds['endIncl'] !== null ? $order <= 0 : $order < 0;
+        }));
+    }
+
+    /**
+     * @param  array<string, ?string>  $bounds
+     * @param  'a'|'h'|'o'|'u'  $type
+     * @param  'high'|'low'  $confidence
+     */
+    private function cnaRange(array $bounds, string $type, ?string $vendor, ?string $product, ?string $plugsInto, string $confidence): VersionRangeData
+    {
+        return new VersionRangeData(
+            type: $type,
+            ecosystem: null,
+            packageManager: null,
+            vendor: $vendor,
+            product: $product,
+            versionInclStart: $bounds['startIncl'],
+            versionExclStart: $bounds['startExcl'],
+            versionInclEnd: $bounds['endIncl'],
+            versionExclEnd: $bounds['endExcl'],
+            plugsInto: $plugsInto,
+            raw: 'cna:'.$bounds['raw'],
+            confidence: $confidence,
+        );
     }
 
     /**
@@ -141,8 +282,7 @@ final class NVDRangeParser implements RangeParser
 
         if (! $hasBound) {
             if ($this->isConcrete($cpe->version)) {
-                $startIncl = $cpe->version;
-                $endIncl = $cpe->version;
+                [$startIncl, $endIncl, $endExcl] = $this->exactVersion($cpe);
             } else {
                 $versionScope = $cpe->version === '-' ? 'na' : 'any';
             }
@@ -162,6 +302,29 @@ final class NVDRangeParser implements RangeParser
             raw: $criteria,
             versionScope: $versionScope,
         );
+    }
+
+    /**
+     * The bounds of a CPE naming one version. Its update field narrows that to a
+     * pre-release ("5.8:beta1"), or to all pre-releases of a kind ("5.8:beta*",
+     * every 5.8 beta and release candidate but not 5.8 itself).
+     *
+     * @return array{string, ?string, ?string} inclusive start, inclusive end, exclusive end
+     */
+    private function exactVersion(Cpe23 $cpe): array
+    {
+        if (! $this->isConcrete($cpe->update)) {
+            return [$cpe->version, $cpe->version, null];
+        }
+
+        $isWildcard = str_ends_with($cpe->update, '*');
+        $version = $cpe->version.'-'.rtrim($cpe->update, '*');
+
+        if ($isWildcard && $this->comparator->compare($version, $cpe->version) < 0) {
+            return [$version, null, $cpe->version];
+        }
+
+        return [$version, $version, null];
     }
 
     /**

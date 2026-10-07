@@ -11,9 +11,9 @@ Everything returns JSON wrapped in `data`. Validation errors come back as `422` 
 |---|---|---|
 | `product` | yes | CPE product (NVD) or package name (OSV) |
 | `version` | yes | version to check |
-| `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages |
+| `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages. Vendors listed as aliases match each other (see [what a check searches](#what-a-check-searches)) |
 | `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Ubuntu:24.04:LTS`, see [what a check searches](#what-a-check-searches) |
-| `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches from ranges where the source named the product but gave no versions (see [confidence](#confidence)) |
+| `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches that may be false alarms (see [confidence](#confidence)) |
 
 Names are matched exactly, use [products](#search-products) to find the right spelling.
 
@@ -51,6 +51,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
           "version_incl_end": null,
           "version_excl_end": "6.9.5",
           "version_scope": "range",
+          "confidence": "high",
           "plugs_into": null
         }
       }
@@ -75,23 +76,49 @@ Every range has a `version_scope`:
 | `any` | NVD CPE version `*` with no bounds, NVD named the product but not which versions (mostly old, never re-analyzed CVEs) | only with `include_low_confidence=1`, `confidence: "low"` |
 | `na` | NVD CPE version `-` (not applicable) with no bounds | never |
 
-When a record has both a `range` and an `any` range matching, the `range` one wins.
+Every range also has a `confidence`. A false alarm costs more than a missed issue, so ranges a source may have wrong are stored as `low`:
+
+| Low `confidence` range | Why |
+|---|---|
+| a CNA range with no lower bound, for a CVE NVD has not analyzed yet, of a product that backports fixes (`backporting_products` in `config/matching.php`, e.g. `wordpress:wordpress`) | `< 7.1.2` also covers patched branch releases such as 7.0.7 or 6.9.10 |
+| the CNA ranges added next to NVD ranges when both list release branches | NVD does not confirm them |
+| a CNA entry that calls every version affected by default (`defaultStatus: affected`) | often means "never fixed" or just "not investigated" |
+
+A match is `confidence: "low"` when its range is `version_scope: any` or `confidence: low`. Low confidence matches are only returned with `include_low_confidence=1` and never count towards `recommended_version`. When a record has a high and a low confidence range matching, the high one wins.
 
 NVD configurations with a top-level `AND` ("vulnerable X running on / with Y") don't produce ranges for the platform node. The platform goes into `plugs_into` instead. A platform node is one with no vulnerable matches, or, in older NVD data that marks both sides vulnerable, one with no version info while another node has some.
 
-NVD also returns the CNA's own `affected` version data (the vendor's or advisory database's view). A CPE match is one contiguous range, so a fix shipped on several release branches ("before 5.40.5, from 5.41.0 before 5.42.3") comes out too broad. When the CNA lists plain ranges for the same product as a CPE match, those ranges replace that product's CPE ranges and `raw` starts with `cna:`. Entries that are placeholders (`n/a`), say everything is affected by default, or name another product leave the CPE ranges alone. After upgrading, re-parse NVD (`parse:l1 nvd --rerun`, then `parse:l2 nvd`) to apply this to stored records.
+NVD also returns the CNA's own `affected` version data (the vendor's or advisory database's view), stored with `raw` starting with `cna:`. Neither source is always right: a CPE match is one contiguous range, so a fix shipped on several release branches ("before 5.40.5, from 5.41.0 before 5.42.3") can come out too broad, while the CNA often writes just `< 7.1.2` where NVD lists every backport. Per product, the source whose ranges tell release branches apart (any range with a lower bound) wins:
+
+| NVD per-branch | CNA per-branch | Result |
+|---|---|---|
+| yes | no | NVD ranges |
+| no | yes | CNA ranges |
+| yes | yes | NVD ranges, plus the CNA ranges as low confidence |
+| no | no | CNA ranges |
+
+Further rules:
+- A CVE NVD has not analyzed yet (no CPE configuration) gets the CNA ranges alone. The vendor / product comes from the entry's `cpes`, else its `packageName`, else a slug of its names (`Cookie Information` / `WP GDPR Compliance` becomes `cookieinformation` / `wp-gdpr-compliance`).
+- CNA ranges that start past their end (a mistyped `4.70` for `4.7.0`) are dropped.
+- `version: X, lessThan: X` (WPScan) and `version: *` (Wordfence) mean "below X".
+- Placeholder entries (`n/a`) and entries naming another product leave the CPE ranges alone.
+- A CPE with an update such as `5.8:beta*` matches only those pre-releases (5.8 betas and release candidates), not 5.8.
+
+After upgrading, run the migrations and re-resolve NVD with `parse:l2 nvd --rerun`. Run `parse:l1 nvd --rerun` first only when L1 ran before CNA data was extracted (v2.5.0).
 
 ### What a check searches
 
 | You pass | Searched | `version` is |
 |---|---|---|
 | `ecosystem` | only that exact ecosystem (`Ubuntu:24.04:LTS`, `npm`, ...) | the package version of that ecosystem |
-| `vendor` only | every range of that vendor | as the source states it |
+| `vendor` only | every range of that vendor and its aliases | as the source states it |
 | neither | NVD plus language ecosystems (`npm`, `PyPI`, `Go`, ... see `config/matching.php`) | the upstream version |
 
 **OS packages:** pass the full `ecosystem` of the release you run (find it with [products](#search-products)) and the version your package manager reports, e.g. `ecosystem=Ubuntu:24.04:LTS&version=3.0.13-0ubuntu3.5`. Distro advisories (Debian, Ubuntu, Alpine, Chainguard, ...) are never returned for a check without an ecosystem, their versions can't be compared with an upstream one. Debian and Ubuntu advisories are keyed by source package name, so map a binary package like `libssl3` to its source (`dpkg-query -W -f='${source:Package}'`).
 
 **Applications** (WordPress, nginx, ...): use `vendor` + `product` and the upstream version.
+
+**Vendor aliases:** NVD and the CNAs file some products under several vendor names (WooCommerce under both `automattic` and `woocommerce`). `vendor_aliases` in `config/matching.php` groups them. A check naming any vendor of a group searches all of them, and a group counts as one vendor when judging [ambiguity](#ambiguous-products).
 
 ### Ambiguous products
 

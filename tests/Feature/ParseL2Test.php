@@ -322,3 +322,19 @@ test('stamps every resolved range with the same creation time', function () {
     $ranges->each(fn (VersionRange $range) => expect($range->created_at->toDateTimeString())->toBe(now()->toDateTimeString())
         ->and($range->updated_at->toDateTimeString())->toBe(now()->toDateTimeString()));
 });
+
+test('stores coarse CNA-only ranges of the configured backporting products as low confidence', function () {
+    seedL2Formats();
+    config(['matching.backporting_products' => ['acme:app']]);
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $cnaEntry = fn (string $product): array => [
+        'vendor' => 'Acme', 'product' => $product, 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => '*', 'lessThan' => '2.0', 'status' => 'affected']],
+    ];
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [['cna' => [$cnaEntry('App'), $cnaEntry('Plugin')]]]]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    expect($record->versionRanges()->pluck('confidence', 'product')->all())
+        ->toBe(['app' => 'low', 'plugin' => 'high']);
+});

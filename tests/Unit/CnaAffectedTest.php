@@ -107,3 +107,51 @@ test('matches a CPE vendor and product by name ignoring case and punctuation', f
     'module' => [['modules' => ['Net::HTTP']], null, 'net_http', true],
     'other product' => [['packageName' => 'perl'], 'python', 'python', false],
 ]);
+
+test('reads a range that starts and ends at the same version as everything below it', function (string $start) {
+    $bounds = cnaBounds(cnaEntry([['version' => $start, 'lessThan' => '3.1.0', 'status' => 'affected']]));
+
+    expect($bounds)->toBe([['startIncl' => null, 'startExcl' => null, 'endIncl' => null, 'endExcl' => '3.1.0']]);
+})->with([
+    'WPScan' => ['3.1.0'],
+    'Wordfence' => ['*'],
+]);
+
+test('reads an entry affected by default as one open range', function (array $versions, ?string $fixedIn) {
+    $bounds = cnaBounds(cnaEntry($versions, ['defaultStatus' => 'affected']));
+
+    expect($bounds)->toBe([['startIncl' => null, 'startExcl' => null, 'endIncl' => null, 'endExcl' => $fixedIn]]);
+})->with([
+    'never fixed' => [[], null],
+    'ignores affected items' => [[['version' => 'n/a', 'status' => 'affected']], null],
+    'fixed from a version on' => [[['version' => '6.1', 'lessThan' => '*', 'status' => 'unaffected']], '6.1'],
+]);
+
+test('gives up on an entry affected by default with unaffected branches', function () {
+    expect(CnaAffected::parse(cnaEntry([
+        ['version' => '6.1.50', 'lessThanOrEqual' => '6.1.*', 'status' => 'unaffected'],
+        ['version' => '6.6', 'lessThanOrEqual' => '*', 'status' => 'unaffected'],
+    ], ['defaultStatus' => 'affected'])))->toBeNull();
+});
+
+test('names the product after its CPE, package name or product name', function (array $names, ?string $vendor, string $product) {
+    $cna = CnaAffected::parse(cnaEntry(
+        [['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']],
+        ['packageName' => null, ...$names],
+    ));
+
+    expect([$cna->vendor, $cna->product])->toBe([$vendor, $product]);
+})->with([
+    'cpe' => [['product' => 'Astra', 'cpes' => ['cpe:2.3:a:brainstormforce:astra:*:*:*:*:*:wordpress:*:*']], 'brainstormforce', 'astra'],
+    'package name' => [['vendor' => 'n/a', 'packageName' => 'guzzlehttp/psr7'], null, 'guzzlehttp/psr7'],
+    'product name' => [['vendor' => 'Cookie Information', 'product' => 'WP GDPR Compliance'], 'cookieinformation', 'wp-gdpr-compliance'],
+]);
+
+test('tells an everything-affected default apart from listed versions', function (string $defaultStatus, bool $expected) {
+    $cna = CnaAffected::parse(cnaEntry([['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']], ['defaultStatus' => $defaultStatus]));
+
+    expect($cna->isAffectedByDefault)->toBe($expected);
+})->with([
+    'affected' => ['affected', true],
+    'unaffected' => ['unaffected', false],
+]);

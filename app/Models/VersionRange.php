@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $version_incl_end
  * @property string|null $version_excl_end
  * @property 'range'|'any'|'na' $version_scope
+ * @property 'high'|'low' $confidence
  * @property string|null $plugs_into
  * @property string|null $raw
  * @property Carbon|null $created_at
