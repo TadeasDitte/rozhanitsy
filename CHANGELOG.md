@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.6.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.5.0...v2.6.0) (2026-10-09)
+
+
+### Features
+
+* add confidence levels to version ranges and enhance vendor aliasing ([62ef964](https://github.com/TadeasDitte/rozhanitsy/commit/62ef9643cd1e61b5abd9f4158be427b51a5c9537))
+* enhance handling of ADP sources and improve confidence levels in vulnerability parsing ([2a92411](https://github.com/TadeasDitte/rozhanitsy/commit/2a92411c72ea97cb12bd2c11528a7812ec3008af))
+
 ## [2.5.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.4.0...v2.5.0) (2026-10-04)
 
 
