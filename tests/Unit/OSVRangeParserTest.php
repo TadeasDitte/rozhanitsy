@@ -149,3 +149,15 @@ test('skips an affected entry that has only a versions list and no ranges', func
 test('returns an empty list when there are no affected entries', function () {
     expect((new OSVRangeParser)->parse([]))->toBe([]);
 });
+
+test('lowercases Packagist package names and vendors only', function (array $package, string $vendor, string $product) {
+    $ranges = (new OSVRangeParser)->parse(osvAffected(
+        [['type' => 'ECOSYSTEM', 'events' => [['introduced' => '0'], ['fixed' => '2.1.70']]]],
+        $package,
+    ));
+
+    expect([$ranges[0]->vendor, $ranges[0]->product])->toBe([$vendor, $product]);
+})->with([
+    'Packagist' => [['ecosystem' => 'Packagist', 'name' => 'Studio-42/elFinder', 'purl' => 'pkg:composer/Studio-42/elFinder'], 'studio-42', 'studio-42/elfinder'],
+    'npm' => [['ecosystem' => 'npm', 'name' => '@Scope/Pkg', 'purl' => 'pkg:npm/%40Scope/Pkg'], '@Scope', '@Scope/Pkg'],
+]);

@@ -17,11 +17,13 @@ final readonly class CnaAffected
     private const array PLACEHOLDERS = ['', 'n/a', 'na', 'unspecified', 'unknown', 'none', '*', '-'];
 
     /**
-     * @param  list<string>  $names  normalized vendor, product, package and module names
+     * @param  list<string>  $names  normalized product, package and module names
      * @param  list<Bounds>  $ranges
      * @param  ?string  $vendor  CPE style vendor to file the ranges under when no CPE range names the product
      * @param  ?string  $product  CPE style product, see $vendor
      * @param  bool  $isAffectedByDefault  whether the ranges come from an everything-affected default rather than listed versions
+     * @param  ?string  $vendorName  normalized vendor name
+     * @param  ?string  $source  the organization (CNA or ADP) whose container the entry comes from
      */
     private function __construct(
         public array $names,
@@ -29,6 +31,8 @@ final readonly class CnaAffected
         public ?string $vendor,
         public ?string $product,
         public bool $isAffectedByDefault = false,
+        public ?string $vendorName = null,
+        public ?string $source = null,
     ) {}
 
     /**
@@ -51,24 +55,30 @@ final readonly class CnaAffected
 
         $names = [];
 
-        foreach ([$entry['vendor'] ?? null, $entry['product'] ?? null, $entry['packageName'] ?? null, ...(array) ($entry['modules'] ?? [])] as $name) {
+        foreach ([$entry['product'] ?? null, $entry['packageName'] ?? null, ...(array) ($entry['modules'] ?? [])] as $name) {
             if (is_string($name) && ! self::isPlaceholder($name)) {
                 $names[] = self::normalize($name);
             }
         }
 
-        if ($names === []) {
+        $vendorName = is_string($entry['vendor'] ?? null) && ! self::isPlaceholder($entry['vendor'])
+            ? self::normalize($entry['vendor'])
+            : null;
+
+        if ($names === [] && $vendorName === null) {
             return null;
         }
 
         [$vendor, $product] = self::cpeName($entry);
+        $source = is_string($entry['source'] ?? null) ? $entry['source'] : null;
 
-        return new self(array_values(array_unique($names)), $ranges, $vendor, $product, $isAffectedByDefault);
+        return new self(array_values(array_unique($names)), $ranges, $vendor, $product, $isAffectedByDefault, $vendorName, $source);
     }
 
     /**
-     * Whether the entry is about a CPE vendor / product, comparing names without
-     * case and punctuation ("Apache ORC" is `apache` + `orc`).
+     * Whether the entry is about a CPE vendor / product, comparing its product,
+     * package and module names without case and punctuation ("Apache ORC" is
+     * `apache` + `orc`).
      */
     public function isAbout(?string $vendor, string $product): bool
     {
@@ -79,6 +89,16 @@ final readonly class CnaAffected
         }
 
         return array_intersect($names, $this->names) !== [];
+    }
+
+    /**
+     * Whether only the entry's vendor name matches the CPE product, as with a
+     * WordPress plugin whose slug is its author's name (`pixelyoursite`). That
+     * author may ship other products too, such as a Pro plugin.
+     */
+    public function isAboutByVendorOnly(?string $vendor, string $product): bool
+    {
+        return ! $this->isAbout($vendor, $product) && $this->vendorName === self::normalize($product);
     }
 
     /**
@@ -196,14 +216,17 @@ final readonly class CnaAffected
         }
 
         if (isset($item['lessThan']) || isset($item['lessThanOrEqual'])) {
-            $isOpenStart = $version === '0' || $version === '*' || $version === $lessThan;
+            $hasUpperBound = $lessThan !== null || $lessThanOrEqual !== null;
+            $isOpenStart = $version === '0' || $version === '*' || $version === $lessThan || $version === $lessThanOrEqual
+                || ($hasUpperBound && self::isPlaceholder($version));
 
             if (! $isOpenStart && ! self::isVersion($version)) {
                 return null;
             }
 
             return [
-                // WPScan writes "< X" as version X, lessThan X, Wordfence as version *
+                // WPScan writes "< X" as version X, lessThan X, Wordfence as version * or as version X,
+                // lessThanOrEqual X, Patchstack writes "from n/a through X" as version n/a
                 'startIncl' => $isOpenStart ? null : $version,
                 'startExcl' => null,
                 'endIncl' => $lessThanOrEqual,

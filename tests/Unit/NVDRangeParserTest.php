@@ -357,11 +357,11 @@ test('only replaces the CPE ranges of the product the CNA describes', function (
             ['criteria' => 'cpe:2.3:a:perl:perl:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '5.43.10'],
             ['criteria' => 'cpe:2.3:a:other:tool:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '3.0'],
         ]),
-        ['cna' => [cnaPerlEntry([['version' => '0', 'lessThan' => '5.40.5', 'status' => 'affected']])]],
+        ['cna' => [cnaPerlEntry([['version' => '0', 'lessThan' => '5.43.11', 'status' => 'affected']])]],
     ]);
 
     expect(array_map(fn ($range): ?string => $range->product.' '.($range->versionExclEnd ?? $range->versionInclEnd), $ranges))
-        ->toBe(['tool 3.0', 'perl 5.40.5']);
+        ->toBe(['tool 3.0', 'perl 5.43.11']);
 });
 
 test('keeps the CPE ranges when the CNA data cannot replace them', function (array $cna) {
@@ -461,8 +461,109 @@ test('drops a CNA range whose start lies past its end', function () {
         ],
     ));
 
-    expect(rangeSummaries($ranges))->toBe(['cpe 4.7-4.7.21', 'cna 5.0-5.0.12 low']);
+    expect(rangeSummaries($ranges))->toBe(['cpe 4.7-4.7.21', 'cna 5.0-5.0.12']);
 });
+
+test('keeps the CNA branches NVD left out at high confidence when both sources are per-branch', function () {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [['versionStartIncluding' => '13.1', 'versionEndExcluding' => '13.1.4']],
+        [
+            ['version' => '12.5', 'lessThan' => '12.5.1', 'status' => 'affected'],
+            ['version' => '13.1', 'lessThan' => '13.1.4', 'status' => 'affected'],
+        ],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe 13.1-13.1.4', 'cna 12.5-12.5.1', 'cna 13.1-13.1.4 low']);
+});
+
+test('lets the CNA ranges replace the CPE ones when neither is per-branch and both end alike', function (array $cpeBound, array $cnaBound, string $expected) {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [$cpeBound],
+        [['version' => '0', 'status' => 'affected', ...$cnaBound]],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe([$expected]);
+})->with([
+    'same fix' => [['versionEndExcluding' => '8.8.5'], ['lessThan' => '8.8.5'], 'cna -8.8.5'],
+    'same last affected' => [['versionEndIncluding' => '4.2.6.8.2'], ['lessThanOrEqual' => '4.2.6.8.2'], 'cna -4.2.6.8.2'],
+    'last affected before the fix' => [['versionEndIncluding' => '5.43.10'], ['lessThan' => '5.43.11'], 'cna -5.43.11'],
+]);
+
+test('keeps the CPE range when neither source is per-branch and the CNA ends elsewhere', function (array $cpeBound, array $cnaBound, string $expected) {
+    $ranges = (new NVDRangeParser)->parse(wordpressConfigWithCna(
+        [$cpeBound],
+        [['version' => '0', 'status' => 'affected', ...$cnaBound]],
+    ));
+
+    expect(rangeSummaries($ranges))->toBe(['cpe -'.($cpeBound['versionEndExcluding'] ?? $cpeBound['versionEndIncluding']), $expected]);
+})->with([
+    'mistyped fix' => [['versionEndExcluding' => '8.8.5'], ['lessThan' => '8.85'], 'cna -8.85 low'],
+    'fix at the last affected version' => [['versionEndIncluding' => '2.0'], ['lessThan' => '2.0'], 'cna -2.0 low'],
+]);
+
+test('ignores entries whose vendor name equals the product when several of them match', function () {
+    $entry = fn (string $product, string $end): array => [
+        'vendor' => 'pixelyoursite',
+        'product' => $product,
+        'defaultStatus' => 'unaffected',
+        'versions' => [['version' => '*', 'lessThanOrEqual' => $end, 'status' => 'affected']],
+    ];
+
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([
+            ['criteria' => 'cpe:2.3:a:pixelyoursite:pixelyoursite:*:*:*:*:*:wordpress:*:*', 'vulnerable' => true, 'versionEndIncluding' => '9.3.6'],
+            ['criteria' => 'cpe:2.3:a:pixelyoursite:pixelyoursite_pro:*:*:*:*:*:wordpress:*:*', 'vulnerable' => true, 'versionEndIncluding' => '9.6.1'],
+        ]),
+        ['cna' => [
+            $entry('PixelYourSite – Your smart PIXEL (TAG) & API Manager', '9.3.6'),
+            $entry('PixelYourSite Pro – Your smart PIXEL (TAG) Manager', '9.6.1'),
+        ]],
+    ]);
+
+    expect(array_map(fn ($range): string => $range->product.' '.$range->versionInclEnd, $ranges))
+        ->toBe(['pixelyoursite 9.3.6', 'pixelyoursite_pro 9.6.1']);
+});
+
+test('uses a single entry whose vendor name equals the product', function () {
+    $ranges = (new NVDRangeParser)->parse([
+        ...nvdConfig([['criteria' => 'cpe:2.3:a:pixelyoursite:pixelyoursite:*:*:*:*:*:wordpress:*:*', 'vulnerable' => true, 'versionEndIncluding' => '9.3.6']]),
+        ['cna' => [[
+            'vendor' => 'pixelyoursite',
+            'product' => 'PixelYourSite – Your smart PIXEL (TAG) & API Manager',
+            'versions' => [['version' => '9.0', 'lessThan' => '9.3.7', 'status' => 'affected']],
+        ]]],
+    ]);
+
+    expect(rangeSummaries($ranges))->toBe(['cna 9.0-9.3.7']);
+});
+
+test('keeps ADP ranges as low confidence', function (array $configurations, array $expected) {
+    $adpEntry = [
+        'vendor' => 'prestashop',
+        'product' => 'prestashop',
+        'source' => 'adp-uuid',
+        'versions' => [['version' => '0', 'lessThanOrEqual' => '3.1.0', 'status' => 'affected']],
+    ];
+    $cnaEntry = [
+        'vendor' => 'prestashop',
+        'product' => 'prestashop',
+        'source' => 'cna-uuid',
+        'versions' => [['version' => '0', 'lessThanOrEqual' => '1.7.8.10', 'status' => 'affected']],
+    ];
+
+    $ranges = (new NVDRangeParser(adpSources: ['adp-uuid']))->parse([
+        ...$configurations,
+        ['cna' => $configurations === [] ? [$adpEntry] : [$cnaEntry, $adpEntry]],
+    ]);
+
+    expect(rangeSummaries($ranges))->toBe($expected);
+})->with([
+    'without CPE configurations' => [[], ['cna -3.1.0 low']],
+    'beside a CNA range' => [
+        nvdConfig([['criteria' => 'cpe:2.3:a:prestashop:prestashop:*:*:*:*:*:*:*:*', 'vulnerable' => true, 'versionEndIncluding' => '1.7.8.10']]),
+        ['cna -1.7.8.10', 'cna -3.1.0 low'],
+    ],
+]);
 
 test('reads the WPScan less than encoding instead of letting an empty range hide the CPE one', function () {
     $ranges = (new NVDRangeParser)->parse([

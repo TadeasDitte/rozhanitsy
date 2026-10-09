@@ -62,4 +62,18 @@ return [
 
     'backporting_products' => ['wordpress:wordpress'],
 
+    /*
+    |--------------------------------------------------------------------------
+    | ADP Sources
+    |--------------------------------------------------------------------------
+    |
+    | Organization ids of ADP containers (organizations other than the CNA that
+    | add data to a CVE record, such as CISA's vulnrichment). Their affected
+    | entries are guesses made after the fact and have mistakes such as module
+    | CVEs filed under the platform, so their ranges are stored as low confidence.
+    |
+    */
+
+    'adp_sources' => ['134c704f-9b21-4f2e-91b3-4a467353bcc0'],
+
 ];

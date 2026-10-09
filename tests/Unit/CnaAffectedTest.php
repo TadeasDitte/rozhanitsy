@@ -106,6 +106,20 @@ test('matches a CPE vendor and product by name ignoring case and punctuation', f
     'vendor and product joined' => [['vendor' => 'Apache Software Foundation', 'product' => 'Apache ORC'], 'apache', 'orc', true],
     'module' => [['modules' => ['Net::HTTP']], null, 'net_http', true],
     'other product' => [['packageName' => 'perl'], 'python', 'python', false],
+    'vendor name alone' => [['vendor' => 'pixelyoursite', 'product' => 'PixelYourSite Pro'], 'pixelyoursite', 'pixelyoursite', false],
+]);
+
+test('tells a match on the vendor name alone apart', function (array $names, bool $expected) {
+    $cna = CnaAffected::parse(cnaEntry(
+        [['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']],
+        ['packageName' => null, ...$names],
+    ));
+
+    expect($cna->isAboutByVendorOnly('pixelyoursite', 'pixelyoursite'))->toBe($expected);
+})->with([
+    'vendor name equals the product' => [['vendor' => 'PixelYourSite', 'product' => 'PixelYourSite Pro'], true],
+    'product name matches too' => [['vendor' => 'pixelyoursite', 'product' => 'PixelYourSite'], false],
+    'other vendor' => [['vendor' => 'someone', 'product' => 'PixelYourSite Pro'], false],
 ]);
 
 test('reads a range that starts and ends at the same version as everything below it', function (string $start) {
@@ -115,7 +129,22 @@ test('reads a range that starts and ends at the same version as everything below
 })->with([
     'WPScan' => ['3.1.0'],
     'Wordfence' => ['*'],
+    'Patchstack' => ['n/a'],
 ]);
+
+test('reads a range that starts at its inclusive end as everything up to it', function (string $start) {
+    $bounds = cnaBounds(cnaEntry([['version' => $start, 'lessThanOrEqual' => '7.0.4', 'status' => 'affected']]));
+
+    expect($bounds)->toBe([['startIncl' => null, 'startExcl' => null, 'endIncl' => '7.0.4', 'endExcl' => null]]);
+})->with([
+    'Wordfence' => ['7.0.4'],
+    'Patchstack' => ['n/a'],
+]);
+
+test('keeps the container an entry comes from', function () {
+    expect(CnaAffected::parse(cnaEntry([['version' => '0', 'lessThan' => '1.0', 'status' => 'affected']], ['source' => 'adp-uuid']))->source)
+        ->toBe('adp-uuid');
+});
 
 test('reads an entry affected by default as one open range', function (array $versions, ?string $fixedIn) {
     $bounds = cnaBounds(cnaEntry($versions, ['defaultStatus' => 'affected']));

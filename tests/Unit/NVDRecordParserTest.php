@@ -22,7 +22,18 @@ test('keeps the CNA affected entries after the CPE configurations', function () 
     ]));
 
     expect($parsed->rawRanges)->toHaveCount(2)
-        ->and($parsed->rawRanges[1])->toBe(['cna' => [$entry, ['packageName' => 'other']]]);
+        ->and($parsed->rawRanges[1])->toBe(['cna' => [[...$entry, 'source' => 'cna-uuid'], ['packageName' => 'other', 'source' => 'cna-uuid']]]);
+});
+
+test('tags each affected entry with the container it comes from', function () {
+    $parsed = (new NVDRecordParser)->parseOne(nvdPayload([
+        'affected' => [
+            ['source' => 'cna-uuid', 'affectedData' => [['packageName' => 'perl']]],
+            ['source' => 'adp-uuid', 'affectedData' => [['packageName' => 'perl']]],
+        ],
+    ]));
+
+    expect(array_column($parsed->rawRanges[1]['cna'], 'source'))->toBe(['cna-uuid', 'adp-uuid']);
 });
 
 test('keeps only the CPE configurations when the record has no affected entries', function () {
@@ -38,5 +49,5 @@ test('keeps the CNA entries of a record without CPE configurations', function ()
         'affected' => [['source' => 'cna-uuid', 'affectedData' => [['packageName' => 'perl']]]],
     ]));
 
-    expect($parsed->rawRanges)->toBe([['cna' => [['packageName' => 'perl']]]]);
+    expect($parsed->rawRanges)->toBe([['cna' => [['packageName' => 'perl', 'source' => 'cna-uuid']]]]);
 });

@@ -12,10 +12,12 @@ final class NVDRangeParser implements RangeParser
 {
     /**
      * @param  list<string>  $backportingProducts  vendor:product pairs, see config/matching.php
+     * @param  list<string>  $adpSources  organization ids of ADP containers, see config/matching.php
      */
     public function __construct(
         private readonly VersionComparator $comparator = new VersionComparator,
         #[Config('matching.backporting_products')] private readonly array $backportingProducts = [],
+        #[Config('matching.adp_sources')] private readonly array $adpSources = [],
     ) {}
 
     public function parse(array $rawRanges): array
@@ -63,8 +65,10 @@ final class NVDRangeParser implements RangeParser
      * at all, its CNA ranges are filed under the CNA's own product names.
      *
      * A wrong range costs a false alarm, so CNA ranges NVD does not back up are
-     * kept as low confidence: the CNA half of a combined set, everything-affected
-     * defaults, and coarse ranges of products that backport fixes.
+     * kept as low confidence: the CNA branches NVD also covers when both tell
+     * branches apart, CNA ranges that disagree with NVD when neither does,
+     * everything-affected defaults, ranges an ADP rather than the CNA added, and
+     * coarse ranges of products that backport fixes.
      *
      * @param  list<VersionRangeData>  $ranges
      * @param  array<int, mixed>  $cnaEntries
@@ -101,16 +105,12 @@ final class NVDRangeParser implements RangeParser
         /** @var array<string, list<VersionRangeData>> $cnaRanges */
         $cnaRanges = [];
 
-        foreach ($cnas as $cna) {
-            foreach ($cpeRanges as $key => $group) {
-                $template = $group[0];
+        foreach ($cpeRanges as $key => $group) {
+            $template = $group[0];
 
-                if (! $cna->isAbout($template->vendor, (string) $template->product)) {
-                    continue;
-                }
-
+            foreach ($this->entriesAbout($cnas, $template->vendor, (string) $template->product) as $cna) {
                 foreach ($this->consistentBounds($cna->ranges) as $bounds) {
-                    $cnaRanges[$key][] = $this->cnaRange($bounds, $template->type, $template->vendor, $template->product, $template->plugsInto, $cna->isAffectedByDefault ? 'low' : 'high');
+                    $cnaRanges[$key][] = $this->cnaRange($bounds, $template->type, $template->vendor, $template->product, $template->plugsInto, $cna->isAffectedByDefault || $this->isFromAdp($cna) ? 'low' : 'high');
                 }
             }
         }
@@ -147,10 +147,133 @@ final class NVDRangeParser implements RangeParser
         }
 
         return match ([$this->isPerBranch($bounded), $this->isPerBranch($confident)]) {
-            [true, true] => [...$bounded, ...array_map($this->withLowConfidence(...), $confident), ...$doubtful],
+            [true, true] => [...$bounded, ...$this->withoutOverlapping($confident, $bounded), ...$doubtful],
             [true, false] => [...$fromCpe, ...$doubtful],
+            [false, false] => $this->haveSameEnd($bounded, $confident)
+                ? $fromCna
+                : [...$fromCpe, ...array_map($this->withLowConfidence(...), $confident), ...$doubtful],
             default => $fromCna,
         };
+    }
+
+    /**
+     * The entries about a CPE product. An entry whose vendor name merely equals
+     * the product counts only when it is the single such entry and no entry
+     * names the product itself, a vendor can ship several products.
+     *
+     * @param  list<CnaAffected>  $cnas
+     * @return list<CnaAffected>
+     */
+    private function entriesAbout(array $cnas, ?string $vendor, string $product): array
+    {
+        $byName = array_values(array_filter($cnas, fn (CnaAffected $cna): bool => $cna->isAbout($vendor, $product)));
+        $byVendor = array_values(array_filter($cnas, fn (CnaAffected $cna): bool => $cna->isAboutByVendorOnly($vendor, $product)));
+
+        return $byName !== [] || count($byVendor) !== 1 ? $byName : $byVendor;
+    }
+
+    private function isFromAdp(CnaAffected $cna): bool
+    {
+        return $cna->source !== null && in_array($cna->source, $this->adpSources, true);
+    }
+
+    /**
+     * The CNA branches NVD covers too are kept as low confidence, those NVD left
+     * out as they are.
+     *
+     * @param  list<VersionRangeData>  $fromCna
+     * @param  list<VersionRangeData>  $fromCpe
+     * @return list<VersionRangeData>
+     */
+    private function withoutOverlapping(array $fromCna, array $fromCpe): array
+    {
+        return array_map(
+            function (VersionRangeData $cnaRange) use ($fromCpe): VersionRangeData {
+                foreach ($fromCpe as $cpeRange) {
+                    if ($this->overlaps($cnaRange, $cpeRange)) {
+                        return $this->withLowConfidence($cnaRange);
+                    }
+                }
+
+                return $cnaRange;
+            },
+            $fromCna,
+        );
+    }
+
+    private function overlaps(VersionRangeData $a, VersionRangeData $b): bool
+    {
+        return $this->startsBeforeEnd($a, $b) && $this->startsBeforeEnd($b, $a);
+    }
+
+    /**
+     * Whether some version at or past the start of $a lies before the end of $b.
+     */
+    private function startsBeforeEnd(VersionRangeData $a, VersionRangeData $b): bool
+    {
+        $start = $a->versionInclStart ?? $a->versionExclStart;
+        $end = $b->versionInclEnd ?? $b->versionExclEnd;
+
+        if ($start === null || $end === null) {
+            return true;
+        }
+
+        $order = $this->comparator->compare($start, $end);
+
+        return $a->versionInclStart !== null && $b->versionInclEnd !== null ? $order <= 0 : $order < 0;
+    }
+
+    /**
+     * Whether both sets end at the same version, the last affected one before
+     * the first fixed one counting as the same end. A CNA "< 8.85" where NVD has
+     * "< 8.8.5" is a typo on one side, NVD analysed the record so it wins.
+     *
+     * @param  list<VersionRangeData>  $fromCpe
+     * @param  list<VersionRangeData>  $fromCna
+     */
+    private function haveSameEnd(array $fromCpe, array $fromCna): bool
+    {
+        [$cpeEnd, $isCpeEndIncl] = $this->highestEnd($fromCpe);
+        [$cnaEnd, $isCnaEndIncl] = $this->highestEnd($fromCna);
+
+        if ($cpeEnd === null || $cnaEnd === null) {
+            return $cpeEnd === $cnaEnd;
+        }
+
+        $order = $this->comparator->compare($cpeEnd, $cnaEnd);
+
+        return match (true) {
+            $isCpeEndIncl === $isCnaEndIncl => $order === 0,
+            $isCpeEndIncl => $order < 0,
+            default => $order > 0,
+        };
+    }
+
+    /**
+     * @param  list<VersionRangeData>  $ranges
+     * @return array{?string, bool} the highest end, null when a range has none, and whether it is inclusive
+     */
+    private function highestEnd(array $ranges): array
+    {
+        $highest = null;
+        $isInclusive = false;
+
+        foreach ($ranges as $range) {
+            $end = $range->versionInclEnd ?? $range->versionExclEnd;
+
+            if ($end === null) {
+                return [null, false];
+            }
+
+            $order = $highest === null ? 1 : $this->comparator->compare($end, $highest);
+
+            if ($order > 0 || ($order === 0 && $range->versionInclEnd !== null)) {
+                $highest = $end;
+                $isInclusive = $range->versionInclEnd !== null;
+            }
+        }
+
+        return [$highest, $isInclusive];
     }
 
     private function withLowConfidence(VersionRangeData $range): VersionRangeData
@@ -206,7 +329,7 @@ final class NVDRangeParser implements RangeParser
                 $isCoarseBackport = $bounds['startIncl'] === null && $bounds['startExcl'] === null
                     && in_array($cna->vendor.':'.$cna->product, $this->backportingProducts, true);
 
-                $ranges[] = $this->cnaRange($bounds, 'a', $cna->vendor, $cna->product, null, $cna->isAffectedByDefault || $isCoarseBackport ? 'low' : 'high');
+                $ranges[] = $this->cnaRange($bounds, 'a', $cna->vendor, $cna->product, null, $cna->isAffectedByDefault || $isCoarseBackport || $this->isFromAdp($cna) ? 'low' : 'high');
             }
         }
 

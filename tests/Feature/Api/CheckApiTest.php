@@ -386,3 +386,16 @@ test('prefers the high confidence range when a record also has a low confidence 
         ->assertJsonPath('data.vulnerabilities.0.confidence', 'high')
         ->assertJsonPath('data.vulnerabilities.0.fixed_in', '7.0.7');
 });
+
+test('matches a Packagist package however its name is spelled', function (array $query) {
+    VersionRange::factory()->create([
+        'vendor' => 'studio-42', 'ecosystem' => 'Packagist', 'product' => 'studio-42/elfinder', 'version_incl_start' => null, 'version_excl_end' => '2.1.70',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['version' => '2.1.61', ...$query]))
+        ->assertJsonPath('data.vulnerability_count', 1);
+})->with([
+    'composer.lock spelling' => [['product' => 'studio-42/elfinder', 'ecosystem' => 'Packagist']],
+    'advisory spelling' => [['product' => 'Studio-42/elFinder', 'ecosystem' => 'Packagist']],
+    'no ecosystem' => [['product' => 'Studio-42/elFinder']],
+]);

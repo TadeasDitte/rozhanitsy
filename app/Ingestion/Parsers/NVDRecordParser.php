@@ -36,8 +36,9 @@ final class NVDRecordParser implements SourceRecordParser
     }
 
     /**
-     * The CPE configurations, followed by one `cna` element holding the CNA's own
-     * affected entries when the record has any.
+     * The CPE configurations, followed by one `cna` element holding the affected
+     * entries of the CNA and any ADP when the record has any, each with the
+     * `source` organization of its container.
      *
      * @param  array<string, mixed>  $cve
      * @return array<int, array<string, mixed>>
@@ -49,7 +50,7 @@ final class NVDRecordParser implements SourceRecordParser
 
         foreach ($cve['affected'] ?? [] as $affected) {
             foreach ($affected['affectedData'] ?? [] as $entry) {
-                $entries[] = $entry;
+                $entries[] = isset($affected['source']) && is_array($entry) ? [...$entry, 'source' => $affected['source']] : $entry;
             }
         }
 

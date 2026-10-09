@@ -18,6 +18,12 @@ final class OSVRangeParser implements RangeParser
             $packageManager = $purl !== null ? $this->packageManagerFromPurl($purl) : null;
             $vendor = $purl !== null ? $this->vendorFromPurl($purl) : null;
 
+            // Packagist names are case insensitive and composer.lock spells them in lowercase
+            if ($ecosystem === 'Packagist') {
+                $product = $product !== null ? mb_strtolower($product) : null;
+                $vendor = $vendor !== null ? mb_strtolower($vendor) : null;
+            }
+
             foreach ($affected['ranges'] ?? [] as $range) {
                 $rangeType = $range['type'] ?? null;
 
