@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.7.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.6.0...v2.7.0) (2026-10-23)
+
+
+### Features
+
+* enhance CNA handling by adding platform mapping and updating related logic ([14ace7c](https://github.com/TadeasDitte/rozhanitsy/commit/14ace7c1fe068d8927a41501937142a0b3c39e3d))
+* implement monitoring webhook reporting for command runs ([48510db](https://github.com/TadeasDitte/rozhanitsy/commit/48510db4ff23de67976c0b00832a34d70d8dddc1))
+
 ## [2.6.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.5.0...v2.6.0) (2026-10-12)
 
 
