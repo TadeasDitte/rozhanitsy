@@ -20,7 +20,7 @@ class BatchCheckRequest extends FormRequest
             'packages.*.vendor' => ['nullable', 'string', 'max:255'],
             'packages.*.ecosystem' => ['nullable', 'string', 'max:255'],
             'packages.*.cvss_severity' => ['nullable', Rule::in(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])],
-            'packages.*.cvss_score' => ['nullable', 'integer', 'max:3'],
+            'packages.*.cvss_score' => ['nullable', 'numeric', 'between:0,10'],
             'include_low_confidence' => ['nullable', 'boolean'],
         ];
     }

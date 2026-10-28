@@ -34,7 +34,7 @@ class CheckController extends Controller
 
     public function batch(BatchCheckRequest $request): JsonResponse
     {
-        /** @var list<array{product: string, version: string, vendor?: ?string, ecosystem?: ?string}> $packages */
+        /** @var list<array{product: string, version: string, vendor?: ?string, ecosystem?: ?string, cvss_severity?: ?string, cvss_score?: int|float|null}> $packages */
         $packages = $request->validated('packages');
 
         return response()->json([
@@ -53,21 +53,21 @@ class CheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvss_severity, ?int $cvss_score, bool $includeLowConfidence): array
+    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvssSeverity, ?float $cvssScore, bool $includeLowConfidence): array
     {
         return $this->cache->remember(
             'check',
-            [$product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence],
-            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence),
+            [$product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence],
+            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence),
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvss_severity, ?int $cvss_score, bool $includeLowConfidence): array
+    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvssSeverity, ?float $cvssScore, bool $includeLowConfidence): array
     {
-        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence);
+        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence);
         $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
 
         if ($candidates !== []) {
@@ -75,8 +75,8 @@ class CheckController extends Controller
                 'vendor' => $vendor,
                 'product' => $product,
                 'ecosystem' => $ecosystem,
-                'cvss_severity' => $cvss_severity,
-                'cvss_score' => $cvss_score,
+                'cvss_severity' => $cvssSeverity,
+                'cvss_score' => $cvssScore,
                 'version' => $version,
                 'ambiguous' => true,
                 'candidates' => $candidates,
@@ -91,8 +91,8 @@ class CheckController extends Controller
             'vendor' => $vendor,
             'product' => $product,
             'ecosystem' => $ecosystem,
-            'cvss_severity' => $cvss_severity,
-            'cvss_score' => $cvss_score,
+            'cvss_severity' => $cvssSeverity,
+            'cvss_score' => $cvssScore,
             'version' => $version,
             'ambiguous' => false,
             'candidates' => [],
