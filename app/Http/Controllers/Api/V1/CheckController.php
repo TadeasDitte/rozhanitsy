@@ -53,7 +53,7 @@ class CheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, bool $includeLowConfidence): array
+    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvss_severity, ?int $cvss_score, bool $includeLowConfidence): array
     {
         return $this->cache->remember(
             'check',
