@@ -95,6 +95,47 @@ test('narrows matches by vendor and ecosystem', function (array $filter) {
     'other ecosystem' => [['ecosystem' => 'npm']],
 ]);
 
+test('narrows matches by severity and minimum score', function (array $filter) {
+    wordpressRange(['version_excl_end' => '7.0'], ['external_id' => 'CVE-2026-2000', 'cvss_score' => 9.8, 'cvss_severity' => 'CRITICAL']);
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_score' => 5.3, 'cvss_severity' => 'MEDIUM']);
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_score' => null, 'cvss_severity' => null]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '6.5', ...$filter]))
+        ->assertOk()
+        ->assertJsonPath('data.vulnerability_count', 1)
+        ->assertJsonPath('data.vulnerabilities.0.id', 'CVE-2026-2000');
+})->with([
+    'severity' => [['severity' => 'CRITICAL']],
+    'minimum score' => [['min_score' => 9]],
+    'fractional minimum score' => [['min_score' => 9.8]],
+]);
+
+test('matches a severity however the source capitalises it', function () {
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_severity' => 'CRITICAL']);
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_severity' => 'Critical']);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '6.5', 'severity' => 'CRITICAL']))
+        ->assertJsonPath('data.vulnerability_count', 2);
+});
+
+test('matches the moderate severity of GitHub advisories', function () {
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_severity' => 'Moderate']);
+    wordpressRange(['version_excl_end' => '7.0'], ['cvss_severity' => 'Medium']);
+
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '6.5', 'severity' => 'MODERATE']))
+        ->assertOk()
+        ->assertJsonPath('data.vulnerability_count', 1);
+});
+
+test('rejects an unknown severity or a minimum score outside 0 to 10', function (array $filter, string $error) {
+    $this->getJson(route('api.v1.check', ['product' => 'wordpress', 'version' => '6.5', ...$filter]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([$error]);
+})->with([
+    'unknown severity' => [['severity' => 'SPICY'], 'severity'],
+    'score above 10' => [['min_score' => 10.1], 'min_score'],
+]);
+
 test('requires product and version', function () {
     $this->getJson(route('api.v1.check'))
         ->assertUnprocessable()
@@ -122,6 +163,8 @@ test('rejects an invalid batch', function (array $payload, string $error) {
     'empty' => [['packages' => []], 'packages'],
     'too many' => [['packages' => array_fill(0, 101, ['product' => 'x', 'version' => '1'])], 'packages'],
     'missing version' => [['packages' => [['product' => 'x']]], 'packages.0.version'],
+    'unknown severity' => [['packages' => [['product' => 'x', 'version' => '1', 'severity' => 'SPICY']]], 'packages.0.severity'],
+    'score above 10' => [['packages' => [['product' => 'x', 'version' => '1', 'min_score' => 11]]], 'packages.0.min_score'],
 ]);
 
 test('never matches a range whose versions are not applicable', function () {

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CheckRequest extends FormRequest
 {
@@ -17,6 +18,8 @@ class CheckRequest extends FormRequest
             'version' => ['required', 'string', 'max:255'],
             'vendor' => ['nullable', 'string', 'max:255'],
             'ecosystem' => ['nullable', 'string', 'max:255'],
+            'severity' => ['nullable', Rule::in(['LOW', 'MODERATE', 'MEDIUM', 'HIGH', 'CRITICAL'])],
+            'min_score' => ['nullable', 'numeric', 'between:0,10'],
             'include_low_confidence' => ['nullable', 'boolean'],
         ];
     }
