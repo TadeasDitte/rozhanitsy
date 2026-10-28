@@ -65,7 +65,7 @@ class CheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, bool $includeLowConfidence): array
+    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvss_severity, ?int $cvss_score, bool $includeLowConfidence): array
     {
         $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence);
         $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
