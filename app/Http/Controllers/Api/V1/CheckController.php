@@ -25,6 +25,8 @@ class CheckController extends Controller
                 $request->string('version'),
                 $request->validated('vendor'),
                 $request->validated('ecosystem'),
+                $request->validated('cvss_severity'),
+                $request->validated('cvss_score'),
                 $request->boolean('include_low_confidence'),
             ),
         ]);
@@ -41,6 +43,8 @@ class CheckController extends Controller
                 $package['version'],
                 $package['vendor'] ?? null,
                 $package['ecosystem'] ?? null,
+                $package['cvss_severity'] ?? null,
+                $package['cvss_score'] ?? null,
                 $request->boolean('include_low_confidence'),
             ), $packages),
         ]);
@@ -53,8 +57,8 @@ class CheckController extends Controller
     {
         return $this->cache->remember(
             'check',
-            [$product, $version, $vendor, $ecosystem, $includeLowConfidence],
-            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $includeLowConfidence),
+            [$product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence],
+            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence),
         );
     }
 
@@ -63,7 +67,7 @@ class CheckController extends Controller
      */
     private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, bool $includeLowConfidence): array
     {
-        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $includeLowConfidence);
+        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $cvss_severity, $cvss_score, $includeLowConfidence);
         $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
 
         if ($candidates !== []) {
@@ -71,6 +75,8 @@ class CheckController extends Controller
                 'vendor' => $vendor,
                 'product' => $product,
                 'ecosystem' => $ecosystem,
+                'cvss_severity' => $cvss_severity,
+                'cvss_score' => $cvss_score,
                 'version' => $version,
                 'ambiguous' => true,
                 'candidates' => $candidates,
@@ -85,6 +91,8 @@ class CheckController extends Controller
             'vendor' => $vendor,
             'product' => $product,
             'ecosystem' => $ecosystem,
+            'cvss_severity' => $cvss_severity,
+            'cvss_score' => $cvss_score,
             'version' => $version,
             'ambiguous' => false,
             'candidates' => [],
