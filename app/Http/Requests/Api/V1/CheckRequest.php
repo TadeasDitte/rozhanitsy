@@ -18,8 +18,8 @@ class CheckRequest extends FormRequest
             'version' => ['required', 'string', 'max:255'],
             'vendor' => ['nullable', 'string', 'max:255'],
             'ecosystem' => ['nullable', 'string', 'max:255'],
-            'cvss_severity' => ['nullable', 'string', Rule::in(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])],
-            'cvss_score' => ['nullable', 'numeric', 'between:0,10'],
+            'severity' => ['nullable', Rule::in(['LOW', 'MODERATE', 'MEDIUM', 'HIGH', 'CRITICAL'])],
+            'min_score' => ['nullable', 'numeric', 'between:0,10'],
             'include_low_confidence' => ['nullable', 'boolean'],
         ];
     }

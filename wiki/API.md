@@ -13,8 +13,8 @@ Everything returns JSON wrapped in `data`. Validation errors come back as `422` 
 | `version` | yes | version to check |
 | `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages. Vendors listed as aliases match each other (see [what a check searches](#what-a-check-searches)) |
 | `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Ubuntu:24.04:LTS`, see [what a check searches](#what-a-check-searches) |
-| `cvss_severity` | no | `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`, only report vulnerabilities of this severity |
-| `cvss_score` | no | `0` to `10`, only report vulnerabilities scored at least this, e.g. `7` |
+| `severity` | no | `LOW`, `MODERATE`, `MEDIUM`, `HIGH` or `CRITICAL`, only report vulnerabilities of this CVSS severity (`MODERATE` is what GitHub advisories in OSV call medium) |
+| `min_score` | no | `0` to `10`, only report vulnerabilities with a CVSS score at least this, e.g. `7` |
 | `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches that may be false alarms (see [confidence](#confidence)) |
 
 Names are matched exactly, use [products](#search-products) to find the right spelling.

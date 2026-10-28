@@ -25,8 +25,8 @@ class CheckController extends Controller
                 $request->string('version'),
                 $request->validated('vendor'),
                 $request->validated('ecosystem'),
-                $request->validated('cvss_severity'),
-                $request->validated('cvss_score'),
+                $request->validated('severity'),
+                $request->validated('min_score'),
                 $request->boolean('include_low_confidence'),
             ),
         ]);
@@ -34,7 +34,7 @@ class CheckController extends Controller
 
     public function batch(BatchCheckRequest $request): JsonResponse
     {
-        /** @var list<array{product: string, version: string, vendor?: ?string, ecosystem?: ?string, cvss_severity?: ?string, cvss_score?: int|float|null}> $packages */
+        /** @var list<array{product: string, version: string, vendor?: ?string, ecosystem?: ?string, severity?: ?string, min_score?: int|float|null}> $packages */
         $packages = $request->validated('packages');
 
         return response()->json([
@@ -43,8 +43,8 @@ class CheckController extends Controller
                 $package['version'],
                 $package['vendor'] ?? null,
                 $package['ecosystem'] ?? null,
-                $package['cvss_severity'] ?? null,
-                $package['cvss_score'] ?? null,
+                $package['severity'] ?? null,
+                $package['min_score'] ?? null,
                 $request->boolean('include_low_confidence'),
             ), $packages),
         ]);
@@ -53,21 +53,21 @@ class CheckController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvssSeverity, ?float $cvssScore, bool $includeLowConfidence): array
+    private function result(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $severity, ?float $minScore, bool $includeLowConfidence): array
     {
         return $this->cache->remember(
             'check',
-            [$product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence],
-            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence),
+            [$product, $version, $vendor, $ecosystem, $severity, $minScore, $includeLowConfidence],
+            fn (): array => $this->freshResult($product, $version, $vendor, $ecosystem, $severity, $minScore, $includeLowConfidence),
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $cvssSeverity, ?float $cvssScore, bool $includeLowConfidence): array
+    private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $severity, ?float $minScore, bool $includeLowConfidence): array
     {
-        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $cvssSeverity, $cvssScore, $includeLowConfidence);
+        $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $severity, $minScore, $includeLowConfidence);
         $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
 
         if ($candidates !== []) {
@@ -75,8 +75,6 @@ class CheckController extends Controller
                 'vendor' => $vendor,
                 'product' => $product,
                 'ecosystem' => $ecosystem,
-                'cvss_severity' => $cvssSeverity,
-                'cvss_score' => $cvssScore,
                 'version' => $version,
                 'ambiguous' => true,
                 'candidates' => $candidates,
@@ -91,8 +89,6 @@ class CheckController extends Controller
             'vendor' => $vendor,
             'product' => $product,
             'ecosystem' => $ecosystem,
-            'cvss_severity' => $cvssSeverity,
-            'cvss_score' => $cvssScore,
             'version' => $version,
             'ambiguous' => false,
             'candidates' => [],
