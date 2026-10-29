@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.1](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.0...v2.7.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* added stall for ingest:osv ([0b01ffd](https://github.com/TadeasDitte/rozhanitsy/commit/0b01ffd7e758eda76193b122c0cb7e14eccd9710))
+
 ## [2.7.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.6.0...v2.7.0) (2026-10-28)
 
 
