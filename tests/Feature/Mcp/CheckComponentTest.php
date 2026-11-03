@@ -1,6 +1,6 @@
 <?php
 
-use App\Mcp\Servers\RozhanistyServer;
+use App\Mcp\Servers\RozhanitsyServer;
 use App\Mcp\Tools\CheckComponent;
 use App\Models\ParsedRecord;
 use App\Models\VersionRange;
@@ -23,7 +23,7 @@ function wordpressPluginRange(array $range = [], array $record = []): VersionRan
 test('reports a vulnerable version with the fixing version', function () {
     wordpressPluginRange(record: ['external_id' => 'CVE-2026-1000']);
 
-    RozhanistyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2'])
+    RozhanitsyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2'])
         ->assertOk()
         ->assertStructuredContent(fn (AssertableJson $json) => $json
             ->where('vulnerable', true)
@@ -36,7 +36,7 @@ test('reports a vulnerable version with the fixing version', function () {
 test('narrows matches by vendor, ecosystem, severity and minimum score', function (array $filter) {
     wordpressPluginRange();
 
-    RozhanistyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', ...$filter])
+    RozhanitsyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', ...$filter])
         ->assertOk()
         ->assertStructuredContent(fn (AssertableJson $json) => $json
             ->where('vulnerable', false)
@@ -51,12 +51,12 @@ test('narrows matches by vendor, ecosystem, severity and minimum score', functio
 test('leaves out versionless ranges unless low confidence results are requested', function () {
     wordpressPluginRange(['version_scope' => 'any']);
 
-    RozhanistyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2'])
+    RozhanitsyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2'])
         ->assertStructuredContent(fn (AssertableJson $json) => $json
             ->where('vulnerable', false)
             ->etc());
 
-    RozhanistyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', 'include_low_confidence' => true])
+    RozhanitsyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', 'include_low_confidence' => true])
         ->assertStructuredContent(fn (AssertableJson $json) => $json
             ->where('vulnerable', true)
             ->where('vulnerabilities.0.confidence', 'low')
@@ -64,12 +64,12 @@ test('leaves out versionless ranges unless low confidence results are requested'
 });
 
 test('requires product and version', function () {
-    RozhanistyServer::tool(CheckComponent::class)
+    RozhanitsyServer::tool(CheckComponent::class)
         ->assertHasErrors(['The product field is required.', 'The version field is required.']);
 });
 
 test('rejects an unknown severity or a minimum score outside 0 to 10', function (array $filter, string $error) {
-    RozhanistyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', ...$filter])
+    RozhanitsyServer::tool(CheckComponent::class, ['product' => 'wordpress', 'version' => '6.9.2', ...$filter])
         ->assertHasErrors([$error]);
 })->with([
     'unknown severity' => [['severity' => 'SPICY'], 'The selected severity is invalid.'],

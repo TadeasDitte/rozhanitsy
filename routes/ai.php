@@ -1,7 +1,7 @@
 <?php
 
+use App\Mcp\Servers\RozhanitsyServer;
 use Laravel\Mcp\Facades\Mcp;
-use App\Mcp\Servers\RozhanistyServer;
 
-Mcp::web('/mcp/weather', RozhanistyServer::class)
+Mcp::web('/mcp', RozhanitsyServer::class)
     ->middleware(['throttle:mcp']);
