@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $published_at
  * @property Carbon|null $last_modified_at
  * @property list<string>|null $weaknesses
- * @property array<int, mixed>|null $references
+ * @property array<int, array{url: string, tags: array<int, string>}>|null $references
  * @property string|null $status
  * @property bool $known_exploited
  * @property array<int, mixed> $raw_ranges

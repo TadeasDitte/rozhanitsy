@@ -19,6 +19,12 @@ class IngestOsv extends Command
 {
     use LogsCommandOutput;
 
+    private const CONNECT_TIMEOUT_SECONDS = 30;
+
+    private const STALL_BYTES_PER_SECOND = 1024;
+
+    private const STALL_SECONDS = 120;
+
     public function __construct(private IngestRecordWriter $writer)
     {
         parent::__construct();
@@ -42,8 +48,15 @@ class IngestOsv extends Command
         $zipPath = storage_path("app/tmp/osv-{$slug}.zip");
         @mkdir(dirname($zipPath), recursive: true);
 
-        Http::timeout(600)
-            ->withOptions(['sink' => $zipPath])
+        Http::timeout(0)
+            ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
+            ->withOptions([
+                'sink' => $zipPath,
+                'curl' => [
+                    CURLOPT_LOW_SPEED_LIMIT => self::STALL_BYTES_PER_SECOND,
+                    CURLOPT_LOW_SPEED_TIME => self::STALL_SECONDS,
+                ],
+            ])
             ->get($url)
             ->throw();
 
