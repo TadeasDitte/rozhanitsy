@@ -11,12 +11,10 @@ use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Tool;
-use Laravel\Mcp\Server\Tools\Annotations\IsIdempotent;
 use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 
 #[Description('Checks whether a product version is affected by any known vulnerability. Returns the matching vulnerabilities and the lowest version that fixes all of them. When the product name is ambiguous, returns the vendor / ecosystem candidates instead: call again with one of them.')]
 #[IsReadOnly]
-#[IsIdempotent]
 class CheckComponent extends Tool
 {
     /**
