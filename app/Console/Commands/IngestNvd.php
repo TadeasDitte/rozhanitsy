@@ -7,12 +7,14 @@ use App\Models\Source;
 use App\Models\SyncState;
 use App\Services\Ingestion\IngestRecordWriter;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
-#[Signature('ingest:nvd {--full : Ignore sync_states and pull the full 120-day window}')]
+#[Signature('ingest:nvd {--full : Ignore sync_states and pull every CVE NVD has}')]
 #[Description('Pull CVEs from NVD API 2.0 into ingest_records')]
 class IngestNvd extends Command
 {
@@ -34,13 +36,38 @@ class IngestNvd extends Command
     public function handle(): int
     {
         $source = Source::where('slug', 'nvd')->firstOrFail();
-        $baseUrl = rtrim($source->ingest_base_url, '/');
         $syncState = SyncState::firstOrCreate(['source_id' => $source->id]);
-        $apiKey = config('services.nvd.api_key');
-
-        [$start, $end] = $this->resolveWindow($syncState, (bool) $this->option('full'));
-        $this->logInfo("Syncing NVD {$start} → {$end}", ['window_start' => $start, 'window_end' => $end, 'has_api_key' => (bool) $apiKey]);
         $startedAt = now();
+        $processed = 0;
+
+        foreach ($this->resolveWindows($syncState, (bool) $this->option('full'), Carbon::now('UTC')) as $window) {
+            $processed += $this->ingestWindow($source, $window['start'], $window['end']);
+
+            $syncState->update([
+                'cursor' => ['last_mod_end_date' => $this->formatDate($window['end'])],
+                'last_synced_at' => now(),
+            ]);
+        }
+
+        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
+        $this->logInfo("Done, {$processed} records written in {$durationSeconds}s.", ['records' => $processed, 'duration_seconds' => $durationSeconds]);
+
+        return self::SUCCESS;
+    }
+
+    private function ingestWindow(Source $source, ?CarbonInterface $start, CarbonInterface $end): int
+    {
+        $apiKey = config('services.nvd.api_key');
+        $dateRange = [];
+
+        if ($start === null) {
+            $this->logInfo('Syncing full NVD catalog', ['has_api_key' => (bool) $apiKey]);
+        } else {
+            $windowStart = $this->formatDate($start);
+            $windowEnd = $this->formatDate($end);
+            $dateRange = ['lastModStartDate' => $windowStart, 'lastModEndDate' => $windowEnd];
+            $this->logInfo("Syncing NVD {$windowStart} → {$windowEnd}", ['window_start' => $windowStart, 'window_end' => $windowEnd, 'has_api_key' => (bool) $apiKey]);
+        }
 
         $startIndex = 0;
         $total = null;
@@ -51,16 +78,15 @@ class IngestNvd extends Command
             $response = Http::withHeaders(array_filter(['apiKey' => $apiKey]))
                 ->timeout(60)
                 ->retry(3, 2000)
-                ->get($baseUrl, [
-                    'lastModStartDate' => $start,
-                    'lastModEndDate' => $end,
+                ->get(rtrim($source->ingest_base_url, '/'), [
+                    ...$dateRange,
                     'resultsPerPage' => self::PAGE_SIZE,
                     'startIndex' => $startIndex,
                 ]);
 
             if ($response->status() === 429) {
                 $this->logWarning('Rate limited — backing off 30s', ['start_index' => $startIndex]);
-                sleep(30);
+                Sleep::sleep(30);
 
                 continue;
             }
@@ -86,15 +112,7 @@ class IngestNvd extends Command
         $bar?->finish();
         $this->newLine();
 
-        $syncState->update([
-            'cursor' => ['last_mod_end_date' => $end],
-            'last_synced_at' => now(),
-        ]);
-
-        $durationSeconds = round($startedAt->diffInSeconds(now()), 1);
-        $this->logInfo("Done, {$processed} records written in {$durationSeconds}s.", ['records' => $processed, 'total_results' => $total, 'duration_seconds' => $durationSeconds]);
-
-        return self::SUCCESS;
+        return $processed;
     }
 
     private function throttle(bool $hasApiKey): void
@@ -103,26 +121,34 @@ class IngestNvd extends Command
             ? self::RATE_LIMIT_DELAY_WITH_KEY
             : self::RATE_LIMIT_DELAY_NO_KEY;
 
-        usleep((int) ($delaySeconds * 1_000_000));
+        Sleep::usleep((int) ($delaySeconds * 1_000_000));
     }
 
     /**
-     * @return array{string, string}
+     * @return list<array{start: CarbonInterface|null, end: CarbonInterface}>
      */
-    private function resolveWindow(SyncState $syncState, bool $full): array
+    private function resolveWindows(SyncState $syncState, bool $full, CarbonInterface $now): array
     {
-        $end = Carbon::now('UTC');
         $lastCursor = $syncState->cursor['last_mod_end_date'] ?? null;
 
         if ($full || ! $lastCursor) {
-            $start = $end->copy()->subDays(self::MAX_DATE_RANGE_DAYS);
-        } else {
-            $start = Carbon::parse($lastCursor);
-            if ($start->diffInDays($end) > self::MAX_DATE_RANGE_DAYS) {
-                $start = $end->copy()->subDays(self::MAX_DATE_RANGE_DAYS);
-            }
+            return [['start' => null, 'end' => $now]];
         }
 
-        return [$start->format('Y-m-d\TH:i:s.000\Z'), $end->format('Y-m-d\TH:i:s.000\Z')];
+        $windows = [];
+        $start = Carbon::parse($lastCursor)->utc();
+
+        while ($start->lessThan($now)) {
+            $end = $start->copy()->addDays(self::MAX_DATE_RANGE_DAYS)->min($now);
+            $windows[] = ['start' => $start, 'end' => $end];
+            $start = $end;
+        }
+
+        return $windows;
+    }
+
+    private function formatDate(CarbonInterface $date): string
+    {
+        return $date->format('Y-m-d\TH:i:s.000\Z');
     }
 }
