@@ -32,7 +32,7 @@ final readonly class ComponentChecker
     private function freshResult(string $product, string $version, ?string $vendor, ?string $ecosystem, ?string $severity, ?float $minScore, bool $includeLowConfidence): array
     {
         $matches = $this->matcher->match($product, $version, $vendor, $ecosystem, $severity, $minScore, $includeLowConfidence);
-        $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches) : [];
+        $candidates = $vendor === null && $ecosystem === null ? $this->matcher->ambiguousCandidates($matches, $product) : [];
 
         if ($candidates !== []) {
             return [

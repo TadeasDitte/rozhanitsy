@@ -127,6 +127,8 @@ After upgrading, run the migrations and re-resolve NVD with `parse:l2 nvd --reru
 
 **Vendor aliases:** NVD and the CNAs file some products under several vendor names (WooCommerce under both `automattic` and `woocommerce`). `vendor_aliases` in `config/matching.php` groups them. A check naming any vendor of a group searches all of them, and a group counts as one vendor when judging [ambiguity](#ambiguous-products).
 
+**CNA names:** a CVE NVD has analysed is filed under its CPE name, one it has not analysed yet under the CNA's name, often the WordPress plugin slug. Analysed records whose CNA entry names the product tie the two together (`litespeed-cache` by LiteSpeed Technologies is NVD's `litespeedtech:litespeed_cache`). A check with NVD's `vendor` and `product` also finds the CNA ranges filed under the CNA's names. A check with neither `vendor` nor `ecosystem` finds, by the CNA's name, NVD's ranges too, and the CNA's and NVD's vendor count as one when judging [ambiguity](#ambiguous-products).
+
 ### Ambiguous products
 
 Different software can share a product name (`orc` as Apache ORC and as another vendor's `orc`). When neither `vendor` nor `ecosystem` is given and the matches span more than one NVD vendor or more than one language ecosystem, `check` doesn't guess. It returns `ambiguous: true`, `vulnerable: null`, no vulnerabilities, and the `candidates` to pick from. Repeat the request with one of them:

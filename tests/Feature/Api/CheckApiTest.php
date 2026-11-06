@@ -487,3 +487,43 @@ test('does not match an advisory database range by a learned vendorless CNA name
     $this->getJson(route('api.v1.check', ['vendor' => 'laravel', 'product' => 'laravel', 'version' => '11.44.1']))
         ->assertJsonPath('data.vulnerability_count', 0);
 });
+
+test('matches the NVD ranges analysed records tie to the product as a CNA name', function (array $ranges, array $names) {
+    foreach ($ranges as [$vendor, $product, $raw]) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => $product, 'version_incl_start' => null, 'version_excl_end' => '6.5.0.1', 'raw' => $raw,
+        ]);
+    }
+    foreach ($names as [$cnaVendor, $vendor, $product]) {
+        CnaProductName::factory()->create(['cna_vendor' => $cnaVendor, 'cna_product' => 'litespeed-cache', 'vendor' => $vendor, 'product' => $product]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'litespeed-cache', 'version' => '6.1']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', count($ranges));
+})->with([
+    'next to a CNA range of the CNA vendor' => [
+        [['litespeedtechnologies', 'litespeed-cache', 'cna:{}'], ['litespeedtech', 'litespeed_cache', null]],
+        [['litespeedtechnologies', 'litespeedtech', 'litespeed_cache']],
+    ],
+    'of two NVD vendors tied by one CNA vendor' => [
+        [['litespeedtech', 'litespeed_cache', null], ['litespeed_technologies', 'litespeed_cache', null]],
+        [['litespeedtechnologies', 'litespeedtech', 'litespeed_cache'], ['litespeedtechnologies', 'litespeed_technologies', 'litespeed_cache']],
+    ],
+]);
+
+test('asks for a vendor when a CNA vendor of the product is tied to no NVD vendor', function () {
+    foreach ([['litespeedtech', 'litespeed_cache', null], ['other_vendor', 'litespeed-cache', 'cna:{}']] as [$vendor, $product, $raw]) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => $product, 'version_incl_start' => null, 'version_excl_end' => '6.5.0.1', 'raw' => $raw,
+        ]);
+    }
+    CnaProductName::factory()->create(['cna_vendor' => 'litespeedtechnologies', 'cna_product' => 'litespeed-cache', 'vendor' => 'litespeedtech', 'product' => 'litespeed_cache']);
+
+    $this->getJson(route('api.v1.check', ['product' => 'litespeed-cache', 'version' => '6.1']))
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.candidates', [
+            ['vendor' => 'litespeedtech', 'ecosystem' => null],
+            ['vendor' => 'other_vendor', 'ecosystem' => null],
+        ]);
+});
