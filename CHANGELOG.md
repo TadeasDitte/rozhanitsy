@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.8.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.1...v2.8.0) (2026-11-06)
+
+
+### Features
+
+* enhance NVD ingestion command with date range handling and logging ([5ca60c1](https://github.com/TadeasDitte/rozhanitsy/commit/5ca60c17fb7fb517bf0629d7624f1b6cc27f961c))
+* enhance vulnerability matching logic with CNA name handling and add related tests ([c672717](https://github.com/TadeasDitte/rozhanitsy/commit/c67271745dbf915f9a0efd57062705dc9aec60f7))
+
+
+### Bug Fixes
+
+* updated readme ([eaf739d](https://github.com/TadeasDitte/rozhanitsy/commit/eaf739d13d190984965de45fed3df2532074ecfa))
+
 ## [2.7.1](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.0...v2.7.1) (2026-11-03)
 
 
