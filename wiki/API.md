@@ -13,7 +13,7 @@ Everything returns JSON wrapped in `data`. Validation errors come back as `422` 
 | `version` | yes | version to check |
 | `vendor` | no | CPE vendor / purl namespace, OSV mostly has none so leave it out for packages. Vendors listed as aliases match each other (see [what a check searches](#what-a-check-searches)) |
 | `ecosystem` | no | OSV ecosystem, e.g. `npm`, `PyPI`, `Ubuntu:24.04:LTS`, see [what a check searches](#what-a-check-searches) |
-| `severity` | no | `LOW`, `MODERATE`, `MEDIUM`, `HIGH` or `CRITICAL`, only report vulnerabilities of this CVSS severity (`MODERATE` is what GitHub advisories in OSV call medium) |
+| `severity` | no | `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`, only report vulnerabilities of this CVSS severity. `MODERATE` (GitHub's name for medium) means `MEDIUM`, and GitHub's label is stored as `Medium` (re-run `parse:l1 osv --rerun` after upgrading) |
 | `min_score` | no | `0` to `10`, only report vulnerabilities with a CVSS score at least this, e.g. `7` |
 | `include_low_confidence` | no | `1` / `0`, default `0`. Also return matches that may be false alarms (see [confidence](#confidence)) |
 
@@ -67,6 +67,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
 - a record with several matching ranges is listed once
 - withdrawn (OSV) and rejected (NVD) records are ignored
 - the same issue from NVD and OSV shows up twice, link them through `aliases`
+- an OSV CVSS v3 vector with no impact (`C:N/I:N/A:N`, scoring 0.0) is not scored, GitHub publishes such vectors next to advisories it rates HIGH or LOW. The severity then comes from another vector or the source's label, the score is `null` (re-run `parse:l1 osv --rerun` after upgrading)
 
 ### Confidence
 
@@ -102,7 +103,7 @@ NVD also returns the CNA's own `affected` version data (the vendor's or advisory
 | no | no | CNA ranges when both end at the same version (or the NVD last affected version lies below the CNA fix), else NVD ranges plus the CNA ranges as low confidence |
 
 Further rules:
-- A CVE NVD has not analyzed yet (no CPE configuration) gets the CNA ranges alone. The vendor / product comes from the entry's `cpes`, else its `packageName`, else a slug of its names (`Cookie Information` / `WP GDPR Compliance` becomes `cookieinformation` / `wp-gdpr-compliance`). Its `plugs_into` comes from the `target_sw` of the entry's `cpes`, else its `collectionURL` (`https://wordpress.org/plugins` or `/themes` means `wordpress`), else from a CNA that only covers the extensions of one platform (`cna_platforms` in `config/matching.php`: Wordfence, Patchstack and WPScan for WordPress). The CNA's platform is not used for the platform itself (WordPress core) or for an entry that names another collection.
+- A CVE NVD has not analyzed yet (no CPE configuration) gets the CNA ranges alone. The vendor / product comes from the entry's `cpes`, else its `packageName`, else a slug of its names (`Cookie Information` / `WP GDPR Compliance` becomes `cookieinformation` / `wp-gdpr-compliance`). Its `plugs_into` comes from the `target_sw` of the entry's `cpes`, else its `collectionURL` (`https://wordpress.org/plugins` or `/themes` means `wordpress`), else from a CNA that only covers the extensions of one platform (`cna_platforms` in `config/matching.php`, keyed by the `source` email NVD gives the CNA: Wordfence, Patchstack and WPScan for WordPress). The CNA's platform is not used for the platform itself (WordPress core) or for an entry that names another collection.
 - CNA ranges that start past their end (a mistyped `4.70` for `4.7.0`) are dropped.
 - `version: X, lessThan: X` (WPScan), `version: *` (Wordfence) and `version: n/a` (Patchstack) mean "below X". With `lessThanOrEqual` they mean "X and below", and so does `version: X, lessThanOrEqual: X` (Wordfence).
 - Placeholder entries (`n/a`) and entries naming another product leave the CPE ranges alone.
@@ -128,6 +129,8 @@ After upgrading, run the migrations and re-resolve NVD with `parse:l2 nvd --reru
 **Vendor aliases:** NVD and the CNAs file some products under several vendor names (WooCommerce under both `automattic` and `woocommerce`). `vendor_aliases` in `config/matching.php` groups them. A check naming any vendor of a group searches all of them, and a group counts as one vendor when judging [ambiguity](#ambiguous-products).
 
 **CNA names:** a CVE NVD has analysed is filed under its CPE name, one it has not analysed yet under the CNA's name, often the WordPress plugin slug. Analysed records whose CNA entry names the product tie the two together (`litespeed-cache` by LiteSpeed Technologies is NVD's `litespeedtech:litespeed_cache`). A check with NVD's `vendor` and `product` also finds the CNA ranges filed under the CNA's names. A check with neither `vendor` nor `ecosystem` finds, by the CNA's name, NVD's ranges too, and the CNA's and NVD's vendor count as one when judging [ambiguity](#ambiguous-products).
+
+**Punctuation:** a CNA that gives no `packageName` is filed under a slug of its product name, which may punctuate the plugin's slug differently ("JetEngine" becomes `jetengine`, the plugin's slug is `jet-engine`). A check with neither `vendor` nor `ecosystem` therefore also finds the CNA ranges whose product has the same letters and digits as the one you pass. Only CNA ranges (`raw` starting with `cna:`) are found that way, never a CPE range or an ecosystem package, and a vendor only such a name brings in does not make a check [ambiguous](#ambiguous-products). Re-run `parse:l2 --rerun` after upgrading to key existing ranges.
 
 ### Ambiguous products
 

@@ -4,6 +4,7 @@ namespace App\Ingestion;
 
 use App\Ingestion\Parsers\LearnsProductNames;
 use App\Ingestion\Parsers\RangeParser;
+use App\Ingestion\Support\ProductKey;
 use App\Models\CnaProductName;
 use App\Models\ParsedRecord;
 use App\Models\Source;
@@ -81,6 +82,7 @@ final class RangeResolvingRunner
                         'package_manager' => $range->packageManager,
                         'vendor' => $range->vendor,
                         'product' => $range->product,
+                        'product_key' => ProductKey::for($range->product),
                         'version_incl_start' => $range->versionInclStart,
                         'version_excl_start' => $range->versionExclStart,
                         'version_incl_end' => $range->versionInclEnd,

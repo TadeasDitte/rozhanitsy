@@ -75,7 +75,38 @@ test('falls back to a qualitative severity nested in an affected entry', functio
         ],
     ]));
 
-    expect($parsed->cvssSeverity)->toBe('Moderate');
+    expect($parsed->cvssSeverity)->toBe('Medium');
+});
+
+test('does not score a CVSS v3 vector with no impact and takes the severity from the label', function (array $severity, string $label, string $expectedVersion, string $expectedSeverity) {
+    $parsed = (new OSVRecordParser)->parseOne(osvPayload([
+        'severity' => $severity,
+        'database_specific' => ['severity' => $label],
+    ]));
+
+    expect($parsed->cvssScore)->toBeNull();
+    expect($parsed->cvssVersion)->toBe($expectedVersion);
+    expect($parsed->cvssSeverity)->toBe($expectedSeverity);
+})->with([
+    'next to a v4 vector' => [
+        [
+            ['type' => 'CVSS_V3', 'score' => 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N'],
+            ['type' => 'CVSS_V4', 'score' => 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N'],
+        ],
+        'HIGH', '4.0', 'High',
+    ],
+    'alone' => [
+        [['type' => 'CVSS_V3', 'score' => 'CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:N']],
+        'LOW', '3.1', 'Low',
+    ],
+]);
+
+test('ignores an unknown qualitative severity', function () {
+    $parsed = (new OSVRecordParser)->parseOne(osvPayload([
+        'database_specific' => ['severity' => 'Unknown'],
+    ]));
+
+    expect($parsed->cvssSeverity)->toBeNull();
 });
 
 test('keeps a v4.0 vector and version even though it cannot be scored', function () {

@@ -43,7 +43,7 @@ final class OSVRecordParser implements SourceRecordParser
         $best = null;
 
         foreach ($this->vectorCandidates($rawPayload) as $candidate) {
-            $parsed = Cvss::fromVector($candidate);
+            $parsed = $this->withoutNoImpactScore(Cvss::fromVector($candidate));
 
             if ($parsed !== null && ($best === null || $this->outranks($parsed, $best))) {
                 $best = $parsed;
@@ -60,6 +60,19 @@ final class OSVRecordParser implements SourceRecordParser
         }
 
         return [null, null, null, $this->qualitativeSeverity($rawPayload)];
+    }
+
+    /**
+     * A vector with no confidentiality, integrity or availability impact scores
+     * 0.0, which GitHub publishes next to advisories it rates HIGH or LOW. It says
+     * nothing about the advisory, so it is kept unscored and the qualitative label
+     * (or another vector) decides the severity.
+     */
+    private function withoutNoImpactScore(?Cvss $cvss): ?Cvss
+    {
+        return $cvss !== null && $cvss->baseScore === 0.0
+            ? new Cvss($cvss->version, $cvss->vector, null, null)
+            : $cvss;
     }
 
     /**
@@ -123,8 +136,9 @@ final class OSVRecordParser implements SourceRecordParser
             foreach (['database_specific', 'ecosystem_specific'] as $key) {
                 $label = $node[$key]['severity'] ?? null;
 
-                if (is_string($label) && $label !== '') {
-                    return ucfirst(strtolower($label));
+                if (is_string($label) && $label !== '' && strtolower($label) !== 'unknown') {
+                    // GitHub calls the medium band "moderate"
+                    return strtolower($label) === 'moderate' ? 'Medium' : ucfirst(strtolower($label));
                 }
             }
         }

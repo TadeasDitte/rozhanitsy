@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Ingestion\Support\ProductKey;
 use App\Models\Format;
 use App\Models\ParsedRecord;
 use App\Models\VersionRange;
@@ -25,6 +26,7 @@ class VersionRangeFactory extends Factory
             'package_manager' => null,
             'vendor' => fake()->word(),
             'product' => fake()->word(),
+            'product_key' => fn (array $attributes): ?string => ProductKey::for($attributes['product']),
             'version_incl_start' => '1.0.0',
             'version_excl_start' => null,
             'version_incl_end' => null,

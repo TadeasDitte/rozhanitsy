@@ -112,11 +112,13 @@ Table version_ranges {
   package_manager varchar
   vendor varchar [null]
   product varchar [null]
+  product_key varchar [null, note: 'product reduced to letters and digits, so names differing only in punctuation match (jet-engine and jetengine)']
   version_incl_start varchar [null, note: 'affected from, inclusive']
   version_excl_start varchar [null, note: 'affected from, exclusive']
   version_incl_end varchar [null, note: 'affected up to, inclusive (OSV last_affected)']
   version_excl_end varchar [null, note: 'fixed in / affected below, exclusive (OSV fixed, NVD versionEndExcluding)']
   version_scope version_ranges_version_scope [not null, default: 'range', note: 'range: bounds are authoritative; any: CPE * without bounds (low confidence); na: CPE - (no version, never matches)']
+  confidence version_ranges_confidence [not null, default: 'high', note: 'low: the source may have this range wrong, only reported on request']
   plugs_into varchar [null, note: 'host product for plugin-type CVEs, e.g. wordpress']
   raw text [null, note: 'original CPE 2.3 criteria string or PURL, kept for traceability']
   created_at timestamp [null]
@@ -126,6 +128,7 @@ Table version_ranges {
     parsed_record_id
     (vendor, product)
     (ecosystem, product)
+    product_key
   }
 }
 

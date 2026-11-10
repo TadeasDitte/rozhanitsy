@@ -527,3 +527,61 @@ test('asks for a vendor when a CNA vendor of the product is tied to no NVD vendo
             ['vendor' => 'other_vendor', 'ecosystem' => null],
         ]);
 });
+
+test('matches a CNA range whose name differs from the product in punctuation only', function (string $cnaProduct, string $slug) {
+    VersionRange::factory()->create([
+        'vendor' => 'crocoblock', 'product' => $cnaProduct, 'version_incl_start' => null, 'version_incl_end' => '3.8.15.3', 'version_excl_end' => null, 'raw' => 'cna:{}',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => $slug, 'version' => '3.7.6']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 1);
+})->with([
+    'a slug of the product name' => ['jetengine', 'jet-engine'],
+    'a hyphenated product name' => ['gravity-forms', 'gravityforms'],
+    'another hyphenation' => ['jupiter-x-core', 'jupiterx-core'],
+]);
+
+test('does not match a punctuation insensitive name of a CPE range or a package', function (array $range) {
+    VersionRange::factory()->create([
+        'product' => 'jetengine', 'version_incl_start' => null, 'version_incl_end' => '3.8.15.3', 'version_excl_end' => null, ...$range,
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'jet-engine', 'version' => '3.7.6']))
+        ->assertJsonPath('data.vulnerability_count', 0);
+})->with([
+    'CPE range' => [['vendor' => 'crocoblock', 'raw' => 'cpe:2.3:a:crocoblock:jetengine:*:*:*:*:*:*:*:*']],
+    'package range' => [['vendor' => null, 'ecosystem' => 'npm', 'raw' => 'pkg:npm/jetengine {}']],
+]);
+
+test('does not ask for a vendor because of a punctuation insensitive name', function () {
+    VersionRange::factory()->create([
+        'vendor' => 'rocketgenius', 'product' => 'gravityforms', 'version_incl_start' => null, 'version_excl_end' => '2.9.0',
+    ]);
+    VersionRange::factory()->create([
+        'vendor' => 'gravityforms', 'product' => 'gravity-forms', 'version_incl_start' => null, 'version_excl_end' => '3.1.0.5', 'raw' => 'cna:{}',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'gravityforms', 'version' => '2.4.21']))
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.vulnerability_count', 2);
+});
+
+test('still asks for a vendor when the products naming it span several vendors', function () {
+    foreach (['apache', 'other_vendor'] as $vendor) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'orc', 'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+    VersionRange::factory()->create([
+        'vendor' => 'third_vendor', 'product' => 'o-r-c', 'version_incl_start' => null, 'version_excl_end' => '2.0', 'raw' => 'cna:{}',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'orc', 'version' => '1.0']))
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.candidates', [
+            ['vendor' => 'apache', 'ecosystem' => null],
+            ['vendor' => 'other_vendor', 'ecosystem' => null],
+            ['vendor' => 'third_vendor', 'ecosystem' => null],
+        ]);
+});

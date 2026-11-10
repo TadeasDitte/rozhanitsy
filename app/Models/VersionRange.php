@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $package_manager
  * @property string|null $vendor
  * @property string|null $product
+ * @property string|null $product_key the product reduced to letters and digits, see App\Ingestion\Support\ProductKey
  * @property string|null $version_incl_start
  * @property string|null $version_excl_start
  * @property string|null $version_incl_end

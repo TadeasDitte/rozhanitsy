@@ -380,3 +380,29 @@ test('stores CNA-only ranges of the configured CNAs as plugging into their platf
 
     expect($record->versionRanges()->pluck('plugs_into', 'product')->all())->toBe(['woodmart' => 'wordpress']);
 });
+
+test('stores CNA-only ranges of Patchstack, which NVD names by its email, as plugging into WordPress', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [['cna' => [[
+        'vendor' => 'ThemeFusion', 'product' => 'Avada', 'source' => 'audit@patchstack.com', 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => 'n/a', 'lessThan' => '7.13.2', 'status' => 'affected']],
+    ]]]]]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    expect($record->versionRanges()->pluck('plugs_into', 'product')->all())->toBe(['avada' => 'wordpress']);
+});
+
+test('stores the punctuation insensitive key of every range product', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [['cna' => [[
+        'vendor' => 'Crocoblock. Jetimpex Inc.', 'product' => 'JetEngine', 'source' => 'audit@patchstack.com', 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => 'n/a', 'lessThanOrEqual' => '3.8.15.3', 'status' => 'affected']],
+    ]]]]]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    expect($record->versionRanges()->pluck('product_key', 'product')->all())->toBe(['jetengine' => 'jetengine']);
+});

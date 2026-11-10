@@ -347,7 +347,7 @@ final readonly class CnaAffected
 
     private static function normalize(string $name): string
     {
-        return preg_replace('/[^a-z0-9]+/', '', strtolower($name)) ?? '';
+        return ProductKey::for($name) ?? '';
     }
 
     /**
