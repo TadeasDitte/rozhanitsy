@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.8.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.1...v2.8.0) (2026-11-13)
+
+
+### Features
+
+* add product key handling for version ranges and enhance matching logic ([524c21e](https://github.com/TadeasDitte/rozhanitsy/commit/524c21e157eda29b4b6058ac3c37a6ea4c86f2ab))
+* enhance NVD ingestion command with date range handling and logging ([5ca60c1](https://github.com/TadeasDitte/rozhanitsy/commit/5ca60c17fb7fb517bf0629d7624f1b6cc27f961c))
+* enhance vulnerability matching logic with CNA name handling and add related tests ([c672717](https://github.com/TadeasDitte/rozhanitsy/commit/c67271745dbf915f9a0efd57062705dc9aec60f7))
+* Introduce Severity class for CVSS severity handling ([ee9b307](https://github.com/TadeasDitte/rozhanitsy/commit/ee9b307c895354abd5b0227c8a68dc3d46709379))
+
+
+### Bug Fixes
+
+* updated readme ([eaf739d](https://github.com/TadeasDitte/rozhanitsy/commit/eaf739d13d190984965de45fed3df2532074ecfa))
+
 ## [2.7.1](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.0...v2.7.1) (2026-11-03)
 
 
