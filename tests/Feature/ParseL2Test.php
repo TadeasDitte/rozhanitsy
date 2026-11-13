@@ -423,3 +423,39 @@ test('files a CNA-only WordPress range under a key the plugin slug also keys to'
         'versions' => [['version' => '*', 'lessThanOrEqual' => '4.61.0', 'status' => 'affected']],
     ], 'jupiter-x-core', 'jupiterxcore'],
 ]);
+
+test('stores the plugin directory slug a record links as a name of its CPE product', function () {
+    seedL2Formats();
+    $source = Source::factory()->create(['slug' => 'nvd']);
+    $record = ParsedRecord::factory()->ofSource($source)->create([
+        'references' => [
+            ['url' => 'https://wordpress.org/plugins/metform/', 'tags' => ['Product']],
+            ['url' => 'https://www.wordfence.com/threat-intel/vulnerabilities/id/04a46249-b5b2-4082-b520-cdc4a1370bb1?source=cve', 'tags' => []],
+        ],
+        'raw_ranges' => [
+            ['nodes' => [['negate' => false, 'cpeMatch' => [
+                ['criteria' => 'cpe:2.3:a:wpmet:metform_elementor_contact_form_builder:*:*:*:*:*:wordpress:*:*', 'vulnerable' => true, 'versionEndIncluding' => '3.7.5'],
+            ]]]],
+            ['cna' => [[
+                'vendor' => 'roxnor',
+                'product' => 'MetForm – Contact Form, Survey, Quiz, & Custom Form Builder for Elementor',
+                'source' => 'security@wordfence.com',
+                'versions' => [['version' => '*', 'lessThanOrEqual' => '3.7.5', 'status' => 'affected']],
+            ]]],
+        ],
+    ]);
+
+    $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
+
+    $this->assertDatabaseHas('cna_product_names', [
+        'parsed_record_id' => $record->id,
+        'cna_vendor' => null,
+        'cna_product' => 'metform',
+        'vendor' => 'wpmet',
+        'product' => 'metform_elementor_contact_form_builder',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'metform', 'version' => '3.7.0']))
+        ->assertJsonPath('data.vulnerability_count', 1)
+        ->assertJsonPath('data.vulnerabilities.0.affected_range.plugs_into', 'wordpress');
+});

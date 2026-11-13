@@ -5,6 +5,7 @@ namespace App\Ingestion\Parsers;
 use App\Ingestion\ProductNameData;
 use App\Ingestion\Support\CnaAffected;
 use App\Ingestion\Support\Cpe23;
+use App\Ingestion\Support\PlatformSlug;
 use App\Ingestion\VersionRangeData;
 use App\Services\VersionComparator;
 use Illuminate\Container\Attributes\Config;
@@ -30,26 +31,51 @@ final class NVDRangeParser implements LearnsProductNames, RangeParser
         return $this->combineWithCna($ranges, $cnaEntries);
     }
 
-    public function productNames(array $rawRanges): array
+    public function productNames(array $rawRanges, array $references = []): array
     {
         [$ranges, $cnaEntries] = $this->read($rawRanges);
         $cnas = $this->parseCnas($cnaEntries);
+        $extension = PlatformSlug::soleExtension($references);
         $names = [];
 
         foreach ($this->replaceableCpeRanges($ranges) as $group) {
             $template = $group[0];
             $product = (string) $template->product;
+            $tiedNames = [];
 
             foreach ($this->entriesAbout($cnas, $template->vendor, $product) as $cna) {
                 if ($cna->product === null || $this->isFromAdp($cna) || [$cna->vendor, $cna->product] === [$template->vendor, $product]) {
                     continue;
                 }
 
+                $tiedNames[] = $cna->product;
                 $names[$cna->vendor.'|'.$cna->product.'|'.$template->vendor.'|'.$product] = new ProductNameData($cna->vendor, $cna->product, $template->vendor, $product);
+            }
+
+            if ($this->tiesExtensionSlug($extension, $template, $product, $tiedNames)) {
+                $slug = (string) $extension['slug'];
+                $names['|'.$slug.'|'.$template->vendor.'|'.$product] = new ProductNameData(null, $slug, $template->vendor, $product);
             }
         }
 
         return array_values($names);
+    }
+
+    /**
+     * Whether the extension a record's links name is worth tying to a CPE
+     * product: only the products of its own platform, never the platform
+     * itself, and only when the slug is a name they do not already go by.
+     *
+     * @param  array{slug: string, platform: string}|null  $extension
+     * @param  list<string>  $tiedNames  the CNA names already tied to the product
+     */
+    private function tiesExtensionSlug(?array $extension, VersionRangeData $template, string $product, array $tiedNames): bool
+    {
+        return $extension !== null
+            && $template->plugsInto === $extension['platform']
+            && $product !== $extension['platform']
+            && $extension['slug'] !== $product
+            && ! in_array($extension['slug'], $tiedNames, true);
     }
 
     /**

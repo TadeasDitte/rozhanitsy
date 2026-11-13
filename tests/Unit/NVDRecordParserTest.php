@@ -51,3 +51,41 @@ test('keeps the CNA entries of a record without CPE configurations', function ()
 
     expect($parsed->rawRanges)->toBe([['cna' => [['packageName' => 'perl', 'source' => 'cna-uuid']]]]);
 });
+
+/**
+ * @return array<int, array<string, mixed>>
+ */
+function nvdCvssMetric(string $version, float $score, string $severity, string $vector): array
+{
+    return [['cvssData' => ['version' => $version, 'vectorString' => $vector, 'baseScore' => $score, 'baseSeverity' => $severity]]];
+}
+
+test('scores a record from the best CVSS metric NVD holds for it', function (array $metrics, array $expected) {
+    $parsed = (new NVDRecordParser)->parseOne(nvdPayload(['metrics' => $metrics]));
+
+    expect([$parsed->cvssScore, $parsed->cvssVersion, $parsed->cvssSeverity])->toBe($expected);
+})->with([
+    'only a v4.0 metric' => [
+        ['cvssMetricV40' => nvdCvssMetric('4.0', 8.7, 'HIGH', 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N')],
+        [8.7, '4.0', 'HIGH'],
+    ],
+    'its own v3.1 analysis next to a v4.0 metric' => [
+        [
+            'cvssMetricV31' => nvdCvssMetric('3.1', 7.5, 'HIGH', 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N'),
+            'cvssMetricV40' => nvdCvssMetric('4.0', 8.7, 'HIGH', 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N'),
+        ],
+        [7.5, '3.1', 'HIGH'],
+    ],
+    'a v4.0 metric next to a v2.0 one' => [
+        [
+            'cvssMetricV2' => [['baseSeverity' => 'MEDIUM', 'cvssData' => ['version' => '2.0', 'vectorString' => 'AV:N/AC:L/Au:N/C:N/I:P/A:N', 'baseScore' => 5.0]]],
+            'cvssMetricV40' => nvdCvssMetric('4.0', 8.7, 'HIGH', 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N'),
+        ],
+        [8.7, '4.0', 'HIGH'],
+    ],
+    'a v2.0 metric, whose severity NVD puts beside the data' => [
+        ['cvssMetricV2' => [['baseSeverity' => 'MEDIUM', 'cvssData' => ['version' => '2.0', 'vectorString' => 'AV:N/AC:L/Au:N/C:N/I:P/A:N', 'baseScore' => 5.0]]]],
+        [5.0, '2.0', 'MEDIUM'],
+    ],
+    'no metric at all' => [[], [null, null, null]],
+]);

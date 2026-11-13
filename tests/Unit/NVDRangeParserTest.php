@@ -702,3 +702,67 @@ test('sets the platform of a CNA-only range from its entry, else from a CNA that
     'collection of something else' => [['source' => 'wp-cna-uuid', 'collectionURL' => 'https://packagist.org'], null],
     'the platform itself' => [['source' => 'wp-cna-uuid', 'vendor' => 'WordPress', 'product' => 'WordPress'], null],
 ]);
+
+test('ties the directory slug a record links to the CPE name of its plugin', function () {
+    $names = (new NVDRangeParser)->productNames(
+        pluginConfigWithCna('cpe:2.3:a:wpmet:metform_elementor_contact_form_builder:*:*:*:*:*:wordpress:*:*', [
+            pluginCnaEntry(['vendor' => 'roxnor', 'product' => 'MetForm – Contact Form, Survey, Quiz, & Custom Form Builder for Elementor']),
+        ]),
+        [['url' => 'https://wordpress.org/plugins/metform/', 'tags' => ['Product']]],
+    );
+
+    expect(productNameSummaries($names))->toBe([[null, 'metform', 'wpmet', 'metform_elementor_contact_form_builder']]);
+});
+
+test('ties no name when the directory slug is the CPE product', function () {
+    $names = (new NVDRangeParser)->productNames(
+        pluginConfigWithCna('cpe:2.3:a:loginizer:loginizer:*:*:*:*:*:wordpress:*:*', [
+            pluginCnaEntry(['vendor' => 'Loginizer', 'product' => 'Loginizer']),
+        ]),
+        [['url' => 'https://wordpress.org/plugins/loginizer/', 'tags' => ['Product']]],
+    );
+
+    expect($names)->toBe([]);
+});
+
+test('ties the directory slug once when the CNA entry names it too', function () {
+    $names = (new NVDRangeParser)->productNames(
+        pluginConfigWithCna('cpe:2.3:a:loginizer:loginizer:*:*:*:*:*:wordpress:*:*', [
+            pluginCnaEntry(['vendor' => 'Loginizer', 'product' => 'Loginizer', 'packageName' => 'loginizer-security']),
+        ]),
+        [['url' => 'https://wordpress.org/plugins/loginizer-security/', 'tags' => ['Product']]],
+    );
+
+    expect(productNameSummaries($names))->toBe([['loginizer', 'loginizer-security', 'loginizer', 'loginizer']]);
+});
+
+test('ties the directory slug only to the products of its own platform', function () {
+    $names = (new NVDRangeParser)->productNames(
+        pluginConfigWithCna('cpe:2.3:a:wpmet:metform_elementor_contact_form_builder:*:*:*:*:*:*:*:*', [
+            pluginCnaEntry(['vendor' => 'roxnor', 'product' => 'MetForm']),
+        ]),
+        [['url' => 'https://wordpress.org/plugins/metform/', 'tags' => ['Product']]],
+    );
+
+    expect($names)->toBe([]);
+});
+
+test('ties no directory slug when NVD has not analysed the record', function () {
+    $names = (new NVDRangeParser)->productNames(
+        [['cna' => [pluginCnaEntry(['vendor' => 'roxnor', 'product' => 'MetForm'])]]],
+        [['url' => 'https://wordpress.org/plugins/metform/', 'tags' => ['Product']]],
+    );
+
+    expect($names)->toBe([]);
+});
+
+test('ties no directory slug to the platform the extension plugs into', function () {
+    $names = (new NVDRangeParser)->productNames(
+        pluginConfigWithCna('cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:wordpress:*:*', [
+            pluginCnaEntry(['vendor' => 'roxnor', 'product' => 'MetForm']),
+        ]),
+        [['url' => 'https://wordpress.org/plugins/metform/', 'tags' => ['Product']]],
+    );
+
+    expect($names)->toBe([]);
+});

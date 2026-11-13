@@ -51,7 +51,7 @@ final class RangeResolvingRunner
             /** @var array<int, array<string, mixed>> $rawRanges */
             $rawRanges = (array) ($record->raw_ranges ?? []);
             $ranges = $this->parser->parse($rawRanges);
-            $productNames = $this->parser instanceof LearnsProductNames ? $this->parser->productNames($rawRanges) : null;
+            $productNames = $this->parser instanceof LearnsProductNames ? $this->parser->productNames($rawRanges, (array) ($record->references ?? [])) : null;
             unset($rawRanges);
 
             DB::transaction(function () use ($record, $ranges, $productNames) {

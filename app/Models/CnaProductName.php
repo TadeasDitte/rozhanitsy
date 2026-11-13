@@ -13,6 +13,10 @@ use Illuminate\Support\Carbon;
  * product NVD uses for it, so CNA ranges of records NVD has not analysed yet,
  * which are filed under the CNA's own names, can be found by the CPE name.
  *
+ * A row with no CNA vendor can also come from the slug a record's links file an
+ * extension under (see App\Ingestion\Support\PlatformSlug), which ties the
+ * name a scan reports a WordPress plugin by to the CPE name NVD gives it.
+ *
  * @property int $id
  * @property int $parsed_record_id
  * @property string|null $cna_vendor

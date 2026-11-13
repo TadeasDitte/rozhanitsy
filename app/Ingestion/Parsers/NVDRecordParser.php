@@ -58,12 +58,19 @@ final class NVDRecordParser implements SourceRecordParser
     }
 
     /**
+     * The best metric NVD holds for the record. NVD's own analysis is a v3.1
+     * score, so it comes before the v4.0 score a CNA may have provided, to keep
+     * one scale across the corpus. A v4.0 score still beats the v2.0 one NVD
+     * only keeps for old records, and is all a record NVD has not analysed yet
+     * may carry: without it such a record has no score and no severity at all,
+     * which hides it from every check that filters on either.
+     *
      * @param  array<string, mixed>  $metrics
      * @return array{?float, ?string, ?string, ?string}
      */
     private function extractCvss(array $metrics): array
     {
-        foreach (['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV2'] as $key) {
+        foreach (['cvssMetricV31', 'cvssMetricV30', 'cvssMetricV40', 'cvssMetricV2'] as $key) {
             $metric = $metrics[$key][0]['cvssData'] ?? null;
 
             if ($metric !== null) {
