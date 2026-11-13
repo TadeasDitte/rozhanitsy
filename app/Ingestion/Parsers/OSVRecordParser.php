@@ -4,6 +4,7 @@ namespace App\Ingestion\Parsers;
 
 use App\Ingestion\ParsedRecordData;
 use App\Ingestion\Support\Cvss;
+use App\Ingestion\Support\Severity;
 use Carbon\Carbon;
 
 final class OSVRecordParser implements SourceRecordParser
@@ -137,8 +138,7 @@ final class OSVRecordParser implements SourceRecordParser
                 $label = $node[$key]['severity'] ?? null;
 
                 if (is_string($label) && $label !== '' && strtolower($label) !== 'unknown') {
-                    // GitHub calls the medium band "moderate"
-                    return strtolower($label) === 'moderate' ? 'Medium' : ucfirst(strtolower($label));
+                    return Severity::label($label);
                 }
             }
         }

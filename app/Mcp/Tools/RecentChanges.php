@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Ingestion\Support\Severity;
 use App\Models\Alias;
 use App\Models\ParsedRecord;
 use Carbon\CarbonInterface;
@@ -50,7 +51,7 @@ class RecentChanges extends Tool
             ->active()
             ->where('last_modified_at', '>=', $since)
             ->when($packageFilters !== [], fn (Builder $query) => $query->whereHas('versionRanges', fn (Builder $ranges) => $ranges->where($packageFilters)))
-            ->when($validated['severity'] ?? null, fn (Builder $query, string $severity) => $query->whereLike('cvss_severity', $severity))
+            ->when($validated['severity'] ?? null, fn (Builder $query, string $severity) => $query->whereLike('cvss_severity', Severity::forFilter($severity)))
             ->when($knownExploited !== null, fn (Builder $query) => $query->where('known_exploited', (bool) $knownExploited))
             ->with(['source', 'aliases'])
             ->orderByDesc('last_modified_at')

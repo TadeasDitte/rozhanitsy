@@ -6,9 +6,9 @@ namespace App\Ingestion\Support;
  * Parses a CVSS vector string and computes its base score.
  *
  * OSV stores the vector string (not a number) in `severity[].score`, so the
- * numeric score has to be derived. CVSS v2.0 and v3.0/v3.1 base scores are
- * computed here; v4.0 vectors are recognised (version + vector kept) but not
- * scored, and an incomplete vector keeps its version/vector with a null score.
+ * numeric score has to be derived. CVSS v2.0, v3.0/v3.1 and v4.0 base scores
+ * are all computed, v4.0 by CvssV4, and an incomplete vector keeps its
+ * version/vector with a null score.
  */
 final readonly class Cvss
 {
@@ -25,12 +25,14 @@ final readonly class Cvss
 
         if (preg_match('#^CVSS:(3\.0|3\.1|4\.0)/(.+)$#i', $vector, $m) === 1) {
             if ($m[1] === '4.0') {
-                return new self('4.0', $vector, null, null);
+                $score = CvssV4::score(self::metrics($m[2]));
+
+                return new self('4.0', $vector, $score, self::severity($score));
             }
 
             $score = self::scoreV3(self::metrics($m[2]));
 
-            return new self($m[1], $vector, $score, self::severityV3($score));
+            return new self($m[1], $vector, $score, self::severity($score));
         }
 
         $body = preg_match('#^CVSS:2\.0/(.+)$#i', $vector, $m) === 1 ? $m[1] : $vector;
@@ -150,7 +152,10 @@ final readonly class Cvss
         return (intdiv($int, 10000) + 1) / 10.0;
     }
 
-    private static function severityV3(?float $score): ?string
+    /**
+     * The qualitative rating scale v3.0, v3.1 and v4.0 share.
+     */
+    private static function severity(?float $score): ?string
     {
         if ($score === null) {
             return null;

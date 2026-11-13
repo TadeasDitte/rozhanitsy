@@ -61,6 +61,7 @@ test('narrows the list by package, severity and exploitation', function (array $
     'product' => [['product' => 'nginx'], ['range' => ['product' => 'nginx']], ['range' => ['product' => 'httpd']]],
     'ecosystem' => [['ecosystem' => 'npm'], ['range' => ['ecosystem' => 'npm']], ['range' => ['ecosystem' => 'PyPI']]],
     'severity however the source capitalises it' => [['severity' => 'CRITICAL'], ['record' => ['cvss_severity' => 'Critical']], ['record' => ['cvss_severity' => 'HIGH']]],
+    'the moderate severity of GitHub advisories' => [['severity' => 'MODERATE'], ['record' => ['cvss_severity' => 'Medium']], ['record' => ['cvss_severity' => 'HIGH']]],
     'known exploited' => [['known_exploited' => true], ['record' => ['known_exploited' => true]], ['record' => ['known_exploited' => false]]],
     'not known exploited' => [['known_exploited' => false], ['record' => ['known_exploited' => false]], ['record' => ['known_exploited' => true]]],
 ]);

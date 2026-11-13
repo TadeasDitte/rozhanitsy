@@ -68,6 +68,7 @@ Names are matched exactly, use [products](#search-products) to find the right sp
 - withdrawn (OSV) and rejected (NVD) records are ignored
 - the same issue from NVD and OSV shows up twice, link them through `aliases`
 - an OSV CVSS v3 vector with no impact (`C:N/I:N/A:N`, scoring 0.0) is not scored, GitHub publishes such vectors next to advisories it rates HIGH or LOW. The severity then comes from another vector or the source's label, the score is `null` (re-run `parse:l1 osv --rerun` after upgrading)
+- CVSS v4.0 vectors are scored like v2 and v3 ones. Records parsed before this carry the vector with a `null` score, which `min_score` skips (re-run `parse:l1 osv --rerun` after upgrading)
 
 ### Confidence
 
@@ -195,7 +196,7 @@ Paginated, newest `published_at` first, same record shape as details. Withdrawn 
 | Param | Notes |
 |---|---|
 | `vendor`, `product`, `ecosystem` | only records with an affected range matching all given values |
-| `severity` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+| `severity` | `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`, whatever case the source writes it in. `MODERATE` (GitHub's name for medium) means `MEDIUM` |
 | `known_exploited` | `1` / `0` (CISA KEV) |
 | `published_since` | date, e.g. `2026-01-01` |
 | `per_page` | 1-100, default 25 |

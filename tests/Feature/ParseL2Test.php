@@ -394,15 +394,32 @@ test('stores CNA-only ranges of Patchstack, which NVD names by its email, as plu
     expect($record->versionRanges()->pluck('plugs_into', 'product')->all())->toBe(['avada' => 'wordpress']);
 });
 
-test('stores the punctuation insensitive key of every range product', function () {
+test('files a CNA-only WordPress range under a key the plugin slug also keys to', function (array $entry, string $product, string $productKey) {
     seedL2Formats();
     $source = Source::factory()->create(['slug' => 'nvd']);
-    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [['cna' => [[
-        'vendor' => 'Crocoblock. Jetimpex Inc.', 'product' => 'JetEngine', 'source' => 'audit@patchstack.com', 'defaultStatus' => 'unaffected',
-        'versions' => [['version' => 'n/a', 'lessThanOrEqual' => '3.8.15.3', 'status' => 'affected']],
-    ]]]]]);
+    $record = ParsedRecord::factory()->ofSource($source)->create(['raw_ranges' => [['cna' => [$entry]]]]);
 
     $this->artisan('parse:l2', ['source' => 'nvd'])->assertSuccessful();
 
-    expect($record->versionRanges()->pluck('product_key', 'product')->all())->toBe(['jetengine' => 'jetengine']);
-});
+    $range = $record->versionRanges()->sole();
+
+    expect($range->product)->toBe($product);
+    expect($range->product_key)->toBe($productKey);
+    expect($range->plugs_into)->toBe('wordpress');
+})->with([
+    // CVE-2026-97265, plugin directory jet-engine
+    'a Patchstack product name with no package name' => [[
+        'vendor' => 'Crocoblock. Jetimpex Inc.', 'product' => 'JetEngine', 'source' => 'audit@patchstack.com', 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => 'n/a', 'lessThanOrEqual' => '3.8.15.3', 'status' => 'affected']],
+    ], 'jetengine', 'jetengine'],
+    // CVE-2026-84434, plugin directory gravityforms
+    'a Wordfence product name of two words' => [[
+        'vendor' => 'Gravity Forms', 'product' => 'Gravity Forms', 'source' => 'security@wordfence.com', 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => '*', 'lessThanOrEqual' => '3.1.0.4', 'status' => 'affected']],
+    ], 'gravity-forms', 'gravityforms'],
+    // CVE-2026-10511, plugin directory jupiterx-core
+    'a Wordfence product name hyphenated differently' => [[
+        'vendor' => 'artbees', 'product' => 'Jupiter X Core', 'source' => 'security@wordfence.com', 'defaultStatus' => 'unaffected',
+        'versions' => [['version' => '*', 'lessThanOrEqual' => '4.61.0', 'status' => 'affected']],
+    ], 'jupiter-x-core', 'jupiterxcore'],
+]);
