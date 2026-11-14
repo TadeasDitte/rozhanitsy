@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.8.0...v2.9.0) (2026-11-14)
+
+
+### Features
+
+* Enhance product name handling with platform slug integration and CVSS metric improvements ([a16ed78](https://github.com/TadeasDitte/rozhanitsy/commit/a16ed784810d2aaf9ceb223c8d7458e03577421c))
+
 ## [2.8.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.1...v2.8.0) (2026-11-13)
 
 ### Features
