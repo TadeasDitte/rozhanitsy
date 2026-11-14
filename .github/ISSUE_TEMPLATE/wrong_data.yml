@@ -1,8 +1,8 @@
 name: Wrong data (false positive / false negative)
 description: Rozhanitsy reported a vulnerability that doesn't apply, missed one that does, or returned wrong details.
-title: "[Data] "
-labels: ["wrong data"]
-assignees: ["TadeasDitte"]
+title: '[Data] '
+labels: ['wrong data']
+assignees: ['TadeasDitte']
 body:
   - type: markdown
     attributes:

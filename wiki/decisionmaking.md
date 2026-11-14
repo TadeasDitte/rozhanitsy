@@ -15,4 +15,5 @@ Pretty much the default laravel migrations with the vue starter kit and all auth
 This table was made in case i would like to support multiple raw sources that have different formats
 
 # TRF
+
 everything sucks so i should unsuck it

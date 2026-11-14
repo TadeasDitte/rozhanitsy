@@ -13,7 +13,7 @@ On the first run or with the `--full` flag it takes all data that NVD has to off
 
 ### OSV
 
-As of now there is `php artisan ingest:osv` 
+As of now there is `php artisan ingest:osv`
 This downloads all.zip, from any specified ecosystem. Reffer to [this](https://google.github.io/osv.dev/data/#ecosystem-naming) and [this](https://storage.googleapis.com/osv-vulnerabilities/ecosystems.txt)
 If left unspecified it downloads the root all.zip
 

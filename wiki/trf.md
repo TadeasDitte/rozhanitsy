@@ -4,4 +4,4 @@ trf:vrsionofformat:category[application[a]/hardware[h]/os[o]/unknown [u]]:ecosys
 
 ecosystem={"a" application,"h" hardware, "o" os, "u" unknown}
 "-" means null
-"*" means wildcard 
+"*" means wildcard

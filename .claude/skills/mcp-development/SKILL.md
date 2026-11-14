@@ -1,9 +1,9 @@
 ---
 name: mcp-development
-description: "Use this skill for Laravel MCP development. Trigger when creating or editing MCP tools, resources, prompts, servers, or UI apps in Laravel projects. Covers: artisan make:mcp-* generators, routes/ai.php, Tool/Resource/Prompt/AppResource classes, schema validation, shouldRegister(), OAuth setup, URI templates, read-only attributes, MCP debugging, MCP UI apps, the x-mcp::app Blade component, createMcpApp(), default AppResource handle() auto-infers view from class name, Response::view(), AppMeta/Csp/Permissions/appMeta() configuration, #[RendersApp] attribute, Library enum for CDN libraries (Tailwind, Alpine), and host theming via CSS variables. Use this whenever the user mentions MCP apps, MCP UI, interactive MCP resources, styling MCP apps with Tailwind or Alpine, or building visual interfaces for AI agents."
+description: 'Use this skill for Laravel MCP development. Trigger when creating or editing MCP tools, resources, prompts, servers, or UI apps in Laravel projects. Covers: artisan make:mcp-* generators, routes/ai.php, Tool/Resource/Prompt/AppResource classes, schema validation, shouldRegister(), OAuth setup, URI templates, read-only attributes, MCP debugging, MCP UI apps, the x-mcp::app Blade component, createMcpApp(), default AppResource handle() auto-infers view from class name, Response::view(), AppMeta/Csp/Permissions/appMeta() configuration, #[RendersApp] attribute, Library enum for CDN libraries (Tailwind, Alpine), and host theming via CSS variables. Use this whenever the user mentions MCP apps, MCP UI, interactive MCP resources, styling MCP apps with Tailwind or Alpine, or building visual interfaces for AI agents.'
 license: MIT
 metadata:
-  author: laravel
+    author: laravel
 ---
 
 # MCP Development
@@ -19,6 +19,7 @@ For MCP UI apps (interactive HTML resources), read `references/app.md` — it co
 Register MCP servers in `routes/ai.php`:
 
 <!-- Register MCP Server -->
+
 ```php
 use Laravel\Mcp\Facades\Mcp;
 
@@ -40,6 +41,7 @@ After creating primitives, register them in your server's `$tools`, `$resources`
 ### Tools
 
 <!-- MCP Tool Example -->
+
 ```php
 use Illuminate\Json\Schema\JsonSchema;
 use Laravel\Mcp\Request;
@@ -69,6 +71,7 @@ class MyTool extends Tool
 ### Registering Primitives in a Server
 
 <!-- Register Primitives in MCP Server -->
+
 ```php
 use Laravel\Mcp\Server;
 

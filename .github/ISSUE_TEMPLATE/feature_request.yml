@@ -1,8 +1,8 @@
 name: Feature request
 description: Suggest a new feature or an improvement.
-title: "[Feature] "
-labels: ["enhancement"]
-assignees: ["TadeasDitte"]
+title: '[Feature] '
+labels: ['enhancement']
+assignees: ['TadeasDitte']
 body:
   - type: dropdown
     id: area

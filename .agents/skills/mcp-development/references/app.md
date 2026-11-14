@@ -356,7 +356,7 @@ To pass server-side data to JS, embed it as `data-*` attributes:
 ```
 
 ```js
-const users = JSON.parse(document.getElementById("app").dataset.users);
+const users = JSON.parse(document.getElementById('app').dataset.users);
 ```
 
 ## Client-Side
@@ -381,13 +381,16 @@ Accepts an object or positional arguments:
 
 ```js
 // Object form
-const result = await app.callServerTool({ name: 'get-analytics', arguments: { dateRange: '7d' } });
+const result = await app.callServerTool({
+    name: 'get-analytics',
+    arguments: { dateRange: '7d' },
+});
 
 // Positional form
 const result = await app.callServerTool('get-analytics', { dateRange: '7d' });
 
 // result structure depends on the server's tool response
-const text = result.content[0]?.text ?? "";
+const text = result.content[0]?.text ?? '';
 ```
 
 All tool results share a standard structure:
@@ -406,17 +409,17 @@ Always check `result.isError` before consuming `content`. See [Error Handling](#
 ```js
 const resources = await app.listResources();
 // or with cursor for pagination
-const resources = await app.listResources("cursor-value");
+const resources = await app.listResources('cursor-value');
 // or object form
-const resources = await app.listResources({ cursor: "cursor-value" });
+const resources = await app.listResources({ cursor: 'cursor-value' });
 ```
 
 #### app.readResource()
 
 ```js
-const resource = await app.readResource("ui://my-resource");
+const resource = await app.readResource('ui://my-resource');
 // or object form
-const resource = await app.readResource({ uri: "ui://my-resource" });
+const resource = await app.readResource({ uri: 'ui://my-resource' });
 ```
 
 ### Messaging
@@ -428,13 +431,13 @@ Send a message to the model (creates a conversation turn):
 ```js
 // Object form with structured content
 await app.sendMessage({
-    role: "user",
-    content: [{ type: "text", text: "User submitted the form." }],
+    role: 'user',
+    content: [{ type: 'text', text: 'User submitted the form.' }],
 });
 
 // Shorthand — plain string content with optional role (defaults to 'user')
-await app.sendMessage("User submitted the form.");
-await app.sendMessage("System event occurred.", "user");
+await app.sendMessage('User submitted the form.');
+await app.sendMessage('System event occurred.', 'user');
 ```
 
 ### Host Context
@@ -467,17 +470,17 @@ const caps = app.getHostCapabilities();
 #### app.openLink()
 
 ```js
-await app.openLink("https://example.com");
+await app.openLink('https://example.com');
 // or object form
-await app.openLink({ url: "https://example.com" });
+await app.openLink({ url: 'https://example.com' });
 ```
 
 #### app.downloadFile()
 
 ```js
-await app.downloadFile("file contents here");
+await app.downloadFile('file contents here');
 // or object form
-await app.downloadFile({ contents: "file contents here" });
+await app.downloadFile({ contents: 'file contents here' });
 ```
 
 ### Display
@@ -485,9 +488,9 @@ await app.downloadFile({ contents: "file contents here" });
 #### app.requestDisplayMode()
 
 ```js
-await app.requestDisplayMode("fullscreen");
+await app.requestDisplayMode('fullscreen');
 // or object form
-await app.requestDisplayMode({ mode: "fullscreen" });
+await app.requestDisplayMode({ mode: 'fullscreen' });
 ```
 
 #### app.resize() / app.autoResize()
@@ -506,7 +509,7 @@ stopObserving();
 #### app.updateModelContext()
 
 ```js
-await app.updateModelContext({ key: "value" });
+await app.updateModelContext({ key: 'value' });
 ```
 
 ### Lifecycle
@@ -525,13 +528,13 @@ app.requestTeardown();
 
 ```js
 // Positional form
-await app.sendLog("info", "Processing started", "my-logger");
+await app.sendLog('info', 'Processing started', 'my-logger');
 
 // Object form
 await app.sendLog({
-    level: "info",
-    data: "Processing started",
-    logger: "my-logger",
+    level: 'info',
+    data: 'Processing started',
+    logger: 'my-logger',
 });
 ```
 
@@ -721,7 +724,8 @@ createMcpApp(async (app) => {
             const result = await app.callServerTool('get-monitor-data');
 
             if (result.isError) {
-                document.getElementById('cpu').textContent = result.content[0]?.text ?? 'Unavailable';
+                document.getElementById('cpu').textContent =
+                    result.content[0]?.text ?? 'Unavailable';
                 return;
             }
 
@@ -819,7 +823,7 @@ createMcpApp(async (app) => {
         try {
             const partial = JSON.parse(params.arguments);
             if (partial.query) {
-                document.getElementById("preview").textContent = partial.query;
+                document.getElementById('preview').textContent = partial.query;
             }
         } catch {
             // partial JSON — ignore until parseable
@@ -828,15 +832,16 @@ createMcpApp(async (app) => {
 
     app.onToolResult((params) => {
         if (params.result.isError) {
-            document.getElementById("error").textContent =
-                params.result.content[0]?.text ?? "Unknown error";
+            document.getElementById('error').textContent =
+                params.result.content[0]?.text ?? 'Unknown error';
             return;
         }
 
         try {
-            renderResults(JSON.parse(params.result.content[0]?.text ?? "{}"));
+            renderResults(JSON.parse(params.result.content[0]?.text ?? '{}'));
         } catch {
-            document.getElementById("error").textContent = "Malformed tool result";
+            document.getElementById('error').textContent =
+                'Malformed tool result';
         }
     });
 });
@@ -848,10 +853,10 @@ Use `localStorage` to preserve UI state across re-renders. For important state, 
 
 ```js
 createMcpApp(async (app) => {
-    const STATE_KEY = "dashboard-view-state";
+    const STATE_KEY = 'dashboard-view-state';
 
     // Restore from localStorage
-    const saved = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+    const saved = JSON.parse(localStorage.getItem(STATE_KEY) || '{}');
     if (saved.activeTab) selectTab(saved.activeTab);
 
     // Save on interaction
@@ -861,7 +866,9 @@ createMcpApp(async (app) => {
 
     // For durable state, persist server-side
     async function saveServerState(state) {
-        await app.callServerTool('save-dashboard-state', { state: JSON.stringify(state) });
+        await app.callServerTool('save-dashboard-state', {
+            state: JSON.stringify(state),
+        });
     }
 });
 ```
@@ -872,14 +879,14 @@ Switch between inline and fullscreen display modes and react to mode changes:
 
 ```js
 createMcpApp(async (app) => {
-    document.getElementById("expand-btn").addEventListener("click", () => {
-        app.requestDisplayMode("fullscreen");
+    document.getElementById('expand-btn').addEventListener('click', () => {
+        app.requestDisplayMode('fullscreen');
     });
 
     app.onHostContextChanged((ctx) => {
         document.body.classList.toggle(
-            "fullscreen",
-            ctx.displayMode === "fullscreen",
+            'fullscreen',
+            ctx.displayMode === 'fullscreen',
         );
     });
 });
@@ -899,15 +906,15 @@ createMcpApp(async (app) => {
     }
 
     // Notify on tab change
-    document.querySelectorAll(".tab").forEach((tab) => {
-        tab.addEventListener("click", () => {
+    document.querySelectorAll('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
             notifyContext(tab.dataset.view, { filters: getActiveFilters() });
         });
     });
 
     // For large payloads, follow up with sendMessage
-    await app.updateModelContext({ currentView: "report", rows: 5000 });
-    await app.sendMessage("The user is viewing a report with 5000 rows.");
+    await app.updateModelContext({ currentView: 'report', rows: 5000 });
+    await app.sendMessage('The user is viewing a report with 5000 rows.');
 });
 ```
 
@@ -964,15 +971,15 @@ createMcpApp(async (app) => {
     const result = await app.callServerTool('process-data', { input: value });
 
     if (result.isError) {
-        document.getElementById("error").textContent =
-            result.content[0]?.text ?? "Unknown error";
+        document.getElementById('error').textContent =
+            result.content[0]?.text ?? 'Unknown error';
         await app.updateModelContext({
-            state: "error",
+            state: 'error',
             message: result.content[0]?.text,
         });
         return;
     }
 
-    renderOutput(JSON.parse(result.content[0]?.text ?? "{}"));
+    renderOutput(JSON.parse(result.content[0]?.text ?? '{}'));
 });
 ```
