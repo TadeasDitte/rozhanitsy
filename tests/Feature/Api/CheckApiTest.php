@@ -262,6 +262,52 @@ test('asks for a vendor or ecosystem when matches span several vendors', functio
         ->assertJsonPath('data.vulnerability_count', 1);
 });
 
+test('counts the vendors a platform extension is filed under as one product', function () {
+    // CVE-2022-2635, NVD's CPE vendor for the Autoptimize plugin
+    VersionRange::factory()->create([
+        'vendor' => 'autoptimize', 'product' => 'autoptimize', 'plugs_into' => 'wordpress',
+        'version_incl_start' => null, 'version_excl_end' => '3.1.1',
+    ]);
+    // CVE-2026-78471, the vendor Wordfence files the same plugin under
+    VersionRange::factory()->create([
+        'vendor' => 'optimizingmatters', 'product' => 'autoptimize', 'plugs_into' => 'wordpress',
+        'version_incl_start' => null, 'version_incl_end' => '3.1.15.1', 'version_excl_end' => null, 'raw' => 'cna:{}',
+    ]);
+
+    $this->getJson(route('api.v1.check', ['product' => 'autoptimize', 'version' => '3.0.0']))
+        ->assertOk()
+        ->assertJsonPath('data.ambiguous', false)
+        ->assertJsonPath('data.candidates', [])
+        ->assertJsonPath('data.vulnerable', true)
+        ->assertJsonPath('data.vulnerability_count', 2);
+});
+
+test('still asks for a vendor when the products plug into different platforms', function () {
+    foreach ([['acme', 'wordpress'], ['other_vendor', 'joomla']] as [$vendor, $platform]) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'widget', 'plugs_into' => $platform,
+            'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'widget', 'version' => '1.0']))
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.vulnerability_count', 0);
+});
+
+test('still asks for a vendor when only one of the products names a platform', function () {
+    foreach ([['acme', null], ['other_vendor', 'wordpress']] as [$vendor, $platform]) {
+        VersionRange::factory()->create([
+            'vendor' => $vendor, 'product' => 'widget', 'plugs_into' => $platform,
+            'version_incl_start' => null, 'version_excl_end' => '2.0',
+        ]);
+    }
+
+    $this->getJson(route('api.v1.check', ['product' => 'widget', 'version' => '1.0']))
+        ->assertJsonPath('data.ambiguous', true)
+        ->assertJsonPath('data.vulnerability_count', 0);
+});
+
 test('treats the same package in NVD and OSV as one product', function () {
     VersionRange::factory()->create([
         'vendor' => 'lodash', 'ecosystem' => null, 'product' => 'lodash', 'version_incl_start' => null, 'version_excl_end' => '4.17.21',
