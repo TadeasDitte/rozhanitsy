@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.8.0...v2.9.0) (2026-11-17)
+
+
+### Features
+
+* Enhance product name handling with platform slug integration and CVSS metric improvements ([a16ed78](https://github.com/TadeasDitte/rozhanitsy/commit/a16ed784810d2aaf9ceb223c8d7458e03577421c))
+* **tests:** add tests for vendor identity handling in vulnerability checks ([2e77a77](https://github.com/TadeasDitte/rozhanitsy/commit/2e77a77f6860b55052d2089e7a3ffaa748757270))
+
 ## [2.8.0](https://github.com/TadeasDitte/rozhanitsy/compare/v2.7.1...v2.8.0) (2026-11-13)
 
 ### Features
